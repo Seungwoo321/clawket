@@ -410,7 +410,7 @@ export function startServer() {
       }
 
       for (const step of allSteps) {
-        const icon = { todo: '[ ]', in_progress: '[>]', done: '[x]', blocked: '[!]' }[step.status] || '[ ]';
+        const icon = { todo: '[ ]', in_progress: '[>]', done: '[x]', blocked: '[!]', review: '[?]', cancelled: '[-]', superseded: '[-]', deferred: '[~]' }[step.status] || '[ ]';
         const assignee = step.assignee ? ` @${step.assignee}` : '';
         lines.push(`  ${icon} ${step.title} (${step.id})${assignee}`);
       }
@@ -475,7 +475,6 @@ export function startServer() {
     const cwd = c.req.query('cwd') || null;
     if (!cwd || !existsSync(cwd)) return c.json([]);
 
-    const SCAN_DIRS = ['docs', 'wiki', 'documentation', '.claude', '.github'];
     const MD_EXTS = new Set(['.md', '.mdx']);
     const MAX_SIZE = 512 * 1024; // 512KB max per file
     const results = [];
@@ -484,7 +483,8 @@ export function startServer() {
       if (depth > 3) return;
       try {
         for (const entry of readdirSync(dir)) {
-          if (entry.startsWith('.') && entry !== '.claude') continue;
+          if (entry.startsWith('.')) continue;
+          if (entry === 'node_modules') continue;
           const full = join(dir, entry);
           try {
             const stat = statSync(full);
@@ -503,10 +503,10 @@ export function startServer() {
       } catch { /* dir not readable */ }
     }
 
-    // Scan known doc directories
-    for (const dir of SCAN_DIRS) {
-      const full = join(cwd, dir);
-      if (existsSync(full)) scanDir(full);
+    // Scan docs/ directory (primary wiki source)
+    const docsDir = join(cwd, 'docs');
+    if (existsSync(docsDir)) {
+      scanDir(docsDir);
     }
 
     // Also include root-level .md files (README, CHANGELOG, etc.)
