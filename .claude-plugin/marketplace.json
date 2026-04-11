@@ -1,9 +1,18 @@
 {
+  "name": "Seungwoo321-lattice",
+  "owner": {
+    "name": "Seungwoo Lee"
+  },
+  "metadata": {
+    "description": "LLM-native work management plugin for Claude Code",
+    "homepage": "https://github.com/Seungwoo321/lattice"
+  },
   "plugins": [
     {
       "name": "lattice",
-      "description": "LLM-native work management dashboard for Claude Code — structured task board across sessions",
-      "path": "."
+      "version": "0.1.0",
+      "source": ".",
+      "description": "LLM-native work management dashboard for Claude Code — structured task board across sessions"
     }
   ]
 }
