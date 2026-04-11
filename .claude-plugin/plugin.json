@@ -1,0 +1,15 @@
+{
+  "name": "lattice",
+  "version": "0.1.0",
+  "description": "LLM-native work management dashboard for Claude Code — structured task board across sessions",
+  "author": {
+    "name": "Seungwoo Lee"
+  },
+  "license": "MIT",
+  "keywords": [
+    "task-management",
+    "work-dashboard",
+    "state-layer",
+    "project-management"
+  ]
+}

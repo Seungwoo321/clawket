@@ -1,0 +1,17 @@
+{
+  "description": "Lattice work dashboard hooks",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "_R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -z \"$_R\" ] && _R=\"$HOME/.claude/plugins/cache/lattice\"; \"$_R/scripts/session-start.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
