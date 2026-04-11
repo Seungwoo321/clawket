@@ -379,6 +379,21 @@ export const steps = {
       }
     }
 
+    // Auto-complete phase if all steps are done
+    if ('status' in fields && ['done', 'cancelled', 'superseded'].includes(fields.status)) {
+      const updatedStep = steps.get(id);
+      if (updatedStep) {
+        const phaseSteps = steps.list({ phase_id: updatedStep.phase_id });
+        const allDone = phaseSteps.every(s => ['done', 'cancelled', 'superseded'].includes(s.status));
+        if (allDone && phaseSteps.length > 0) {
+          const phase = phases.get(updatedStep.phase_id);
+          if (phase && phase.status !== 'completed') {
+            phases.update(updatedStep.phase_id, { status: 'completed' });
+          }
+        }
+      }
+    }
+
     return steps.get(id);
   },
   delete(id) {
