@@ -140,6 +140,20 @@ The web dashboard provides 6 views:
 
 Access the dashboard at `http://localhost:<port>` when the daemon is running.
 
+### Screenshots
+
+| Summary | Plans |
+|---------|-------|
+| ![Summary](screenshots/01-summary.png) | ![Plans](screenshots/02-plans.png) |
+
+| Board (Kanban) | Backlog |
+|----------------|---------|
+| ![Board](screenshots/03-board.png) | ![Backlog](screenshots/04-backlog.png) |
+
+| Timeline | Wiki |
+|----------|------|
+| ![Timeline](screenshots/05-timeline.png) | ![Wiki](screenshots/06-wiki.png) |
+
 ## Design Principles
 
 1. **Dual-consumer storage** — One store, two views. LLM reads via CLI, humans read via web dashboard. LLM never drives web DOM.

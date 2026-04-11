@@ -140,6 +140,20 @@ lattice bolt update BOLT-xxx --status active
 
 데몬 실행 중 `http://localhost:<port>`에서 접근할 수 있습니다.
 
+### 스크린샷
+
+| 요약 | 계획 |
+|------|------|
+| ![Summary](screenshots/01-summary.png) | ![Plans](screenshots/02-plans.png) |
+
+| 보드 (칸반) | 백로그 |
+|-------------|--------|
+| ![Board](screenshots/03-board.png) | ![Backlog](screenshots/04-backlog.png) |
+
+| 타임라인 | 위키 |
+|----------|------|
+| ![Timeline](screenshots/05-timeline.png) | ![Wiki](screenshots/06-wiki.png) |
+
 ## 설계 원칙
 
 1. **이중 소비자 저장소** — 하나의 저장소, 두 개의 뷰. LLM은 CLI로, 사람은 웹 대시보드로 조회. LLM이 웹 DOM을 직접 조작하지 않음.
