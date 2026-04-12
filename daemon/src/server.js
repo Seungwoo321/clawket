@@ -7,7 +7,7 @@ import { getRequestListener, serve } from '@hono/node-server';
 
 import { paths, ensureDirs } from './paths.js';
 import { getDb, closeDb } from './db.js';
-import { projects, plans, phases, steps, bolts, artifacts, runs, questions, stepComments, artifactVersions, activityLog, stepRelations } from './repo.js';
+import { projects, plans, phases, steps, bolts, artifacts, runs, questions, stepComments, artifactVersions, activityLog, stepRelations, timeline } from './repo.js';
 import { importPlanFile } from './import-plan.js';
 import { webDashboardHtml } from './web.js';
 import { formatOutput } from './format.js';
@@ -24,6 +24,11 @@ export function startServer() {
 
   const startTime = Date.now();
   const app = new Hono();
+
+  function jsonOr404(c, entity) {
+    if (!entity) return c.json({ error: 'not found' }, 404);
+    return c.json(entity);
+  }
 
   // SSE event bus for real-time updates
   const sseClients = new Set();
@@ -73,8 +78,7 @@ export function startServer() {
   app.get('/projects/:id', (c) => {
     const id = c.req.param('id');
     const p = id.startsWith('PROJ-') ? projects.get(id) : projects.getByName(id);
-    if (!p) return c.json({ error: 'not found' }, 404);
-    return c.json(p);
+    return jsonOr404(c, p);
   });
   app.patch('/projects/:id', async (c) => c.json(projects.update(c.req.param('id'), await c.req.json())));
   app.delete('/projects/:id', (c) => {
@@ -92,8 +96,18 @@ export function startServer() {
   app.get('/projects/by-cwd/:cwd{.+}', (c) => {
     const cwd = decodeURIComponent(c.req.param('cwd'));
     const p = projects.getByCwd(cwd);
-    if (!p) return c.json({ error: 'not found' }, 404);
-    return c.json(p);
+    return jsonOr404(c, p);
+  });
+
+  // ========== Project Timeline ==========
+  app.get('/projects/:id/timeline', (c) => {
+    const q = c.req.query();
+    return c.json(timeline.list({
+      project_id: c.req.param('id'),
+      limit: q.limit ? parseInt(q.limit) : 100,
+      offset: q.offset ? parseInt(q.offset) : 0,
+      types: q.types || null,
+    }));
   });
 
   // ========== Plans ==========
@@ -102,11 +116,7 @@ export function startServer() {
     return c.json(plans.list({ project_id: q.project_id || null, status: q.status || null }));
   });
   app.post('/plans', async (c) => c.json(plans.create(await c.req.json())));
-  app.get('/plans/:id', (c) => {
-    const p = plans.get(c.req.param('id'));
-    if (!p) return c.json({ error: 'not found' }, 404);
-    return c.json(p);
-  });
+  app.get('/plans/:id', (c) => jsonOr404(c, plans.get(c.req.param('id'))));
   app.patch('/plans/:id', async (c) => { const r = plans.update(c.req.param('id'), await c.req.json()); broadcastEvent('plan:updated', { id: c.req.param('id') }); return c.json(r); });
   app.delete('/plans/:id', (c) => {
     plans.delete(c.req.param('id'));
@@ -129,11 +139,7 @@ export function startServer() {
     return c.json(phases.list({ plan_id: q.plan_id || null, status: q.status || null }));
   });
   app.post('/phases', async (c) => c.json(phases.create(await c.req.json())));
-  app.get('/phases/:id', (c) => {
-    const p = phases.get(c.req.param('id'));
-    if (!p) return c.json({ error: 'not found' }, 404);
-    return c.json(p);
-  });
+  app.get('/phases/:id', (c) => jsonOr404(c, phases.get(c.req.param('id'))));
   app.patch('/phases/:id', async (c) => { const r = phases.update(c.req.param('id'), await c.req.json()); broadcastEvent('phase:updated', { id: c.req.param('id') }); return c.json(r); });
   app.delete('/phases/:id', (c) => {
     phases.delete(c.req.param('id'));
@@ -223,11 +229,7 @@ export function startServer() {
 
     return c.json(steps.search(query, { limit, mode: 'keyword' }));
   });
-  app.get('/steps/:id', (c) => {
-    const s = steps.get(c.req.param('id'));
-    if (!s) return c.json({ error: 'not found' }, 404);
-    return c.json(s);
-  });
+  app.get('/steps/:id', (c) => jsonOr404(c, steps.get(c.req.param('id'))));
   app.patch('/steps/:id', async (c) => {
     const result = steps.update(c.req.param('id'), await c.req.json());
     broadcastEvent('step:updated', { id: c.req.param('id') });
@@ -317,11 +319,7 @@ export function startServer() {
     return c.json(bolts.list({ project_id: q.project_id || null, status: q.status || null }));
   });
   app.post('/bolts', async (c) => c.json(bolts.create(await c.req.json())));
-  app.get('/bolts/:id', (c) => {
-    const b = bolts.get(c.req.param('id'));
-    if (!b) return c.json({ error: 'not found' }, 404);
-    return c.json(b);
-  });
+  app.get('/bolts/:id', (c) => jsonOr404(c, bolts.get(c.req.param('id'))));
   app.patch('/bolts/:id', async (c) => { const r = bolts.update(c.req.param('id'), await c.req.json()); broadcastEvent('bolt:updated', { id: c.req.param('id') }); return c.json(r); });
   app.delete('/bolts/:id', (c) => {
     bolts.delete(c.req.param('id'));
@@ -349,11 +347,7 @@ export function startServer() {
     }));
   });
   app.post('/artifacts', async (c) => c.json(artifacts.create(await c.req.json())));
-  app.get('/artifacts/:id', (c) => {
-    const a = artifacts.get(c.req.param('id'));
-    if (!a) return c.json({ error: 'not found' }, 404);
-    return c.json(a);
-  });
+  app.get('/artifacts/:id', (c) => jsonOr404(c, artifacts.get(c.req.param('id'))));
   app.delete('/artifacts/:id', (c) => {
     artifacts.delete(c.req.param('id'));
     return c.json({ deleted: c.req.param('id') });
@@ -379,11 +373,7 @@ export function startServer() {
     return c.json(runs.list({ step_id: q.step_id || null, session_id: q.session_id || null }));
   });
   app.post('/runs', async (c) => c.json(runs.create(await c.req.json())));
-  app.get('/runs/:id', (c) => {
-    const r = runs.get(c.req.param('id'));
-    if (!r) return c.json({ error: 'not found' }, 404);
-    return c.json(r);
-  });
+  app.get('/runs/:id', (c) => jsonOr404(c, runs.get(c.req.param('id'))));
   app.post('/runs/:id/finish', async (c) => {
     const body = await c.req.json();
     return c.json(runs.finish(c.req.param('id'), { result: body.result, notes: body.notes || null }));
@@ -401,11 +391,7 @@ export function startServer() {
     }));
   });
   app.post('/questions', async (c) => c.json(questions.create(await c.req.json())));
-  app.get('/questions/:id', (c) => {
-    const q = questions.get(c.req.param('id'));
-    if (!q) return c.json({ error: 'not found' }, 404);
-    return c.json(q);
-  });
+  app.get('/questions/:id', (c) => jsonOr404(c, questions.get(c.req.param('id'))));
   app.post('/questions/:id/answer', async (c) => {
     const body = await c.req.json();
     return c.json(questions.answer(c.req.param('id'), {
@@ -434,11 +420,11 @@ export function startServer() {
     '.ico': 'image/x-icon',
   };
 
-  // Resolve web directory: try daemon/web first, then web/dist (dev mode)
+  // Resolve web directory: prefer web/dist (dev build), fallback to daemon/web (plugin bundle)
   const DAEMON_ROOT = join(import.meta.dirname, '..');
   const WEB_DIR_CANDIDATES = [
-    join(DAEMON_ROOT, 'web'),                    // plugin: daemon/web/
-    join(DAEMON_ROOT, '..', 'web', 'dist'),      // dev: lattice-dev/web/dist/
+    join(DAEMON_ROOT, '..', 'web', 'dist'),      // dev: lattice/web/dist/
+    join(DAEMON_ROOT, 'web'),                    // plugin bundle: daemon/web/
   ];
   const WEB_DIR = WEB_DIR_CANDIDATES.find(d => existsSync(join(d, 'index.html'))) || WEB_DIR_CANDIDATES[0];
 
@@ -546,6 +532,20 @@ export function startServer() {
         lines.push(`  Progress: ${done}/${allSteps.length}`);
       }
 
+      // Completed phases: summary only (save tokens)
+      if (phase.status === 'completed') {
+        const nonDone = allSteps.filter(s => s.status !== 'done');
+        if (nonDone.length > 0) {
+          for (const step of nonDone) {
+            const icon = { todo: '[ ]', in_progress: '[>]', blocked: '[!]', review: '[?]', cancelled: '[-]', superseded: '[-]', deferred: '[~]' }[step.status] || '[ ]';
+            const assignee = step.assignee ? ` @${step.assignee}` : '';
+            lines.push(`  ${icon} ${step.title} (${step.id})${assignee}`);
+          }
+        }
+        lines.push('');
+        continue;
+      }
+
       for (const step of allSteps) {
         const icon = { todo: '[ ]', in_progress: '[>]', done: '[x]', blocked: '[!]', review: '[?]', cancelled: '[-]', superseded: '[-]', deferred: '[~]' }[step.status] || '[ ]';
         const assignee = step.assignee ? ` @${step.assignee}` : '';
@@ -563,7 +563,7 @@ export function startServer() {
     } // end plan loop
 
     // Recent activity (last session context)
-    const recentRuns = runs.list({}).slice(0, 5);
+    const recentRuns = runs.list({ project_id: project.id }).slice(0, 5);
     if (recentRuns.length > 0) {
       lines.push('## Recent Activity');
       for (const r of recentRuns) {

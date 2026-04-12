@@ -1,6 +1,17 @@
 import { getDb } from './db.js';
 import { newId, now, slugify } from './id.js';
 
+// -------- Shared helpers --------
+
+function buildWhere(filters) {
+  const where = [];
+  const vals = [];
+  for (const [key, val] of Object.entries(filters)) {
+    if (val != null) { where.push(`${key} = ?`); vals.push(val); }
+  }
+  return { clause: where.length ? 'WHERE ' + where.join(' AND ') : '', vals };
+}
+
 // -------- Projects --------
 
 /** Generate a short uppercase key from a project name. */
@@ -50,8 +61,11 @@ export const projects = {
   },
   list() {
     const db = getDb();
-    return db.prepare(`SELECT * FROM projects ORDER BY created_at DESC`).all()
-      .map(r => ({ ...r, cwds: db.prepare(`SELECT cwd FROM project_cwds WHERE project_id = ?`).all(r.id).map(x => x.cwd) }));
+    const rows = db.prepare(`SELECT * FROM projects ORDER BY created_at DESC`).all();
+    const allCwds = db.prepare(`SELECT project_id, cwd FROM project_cwds`).all();
+    const cwdMap = {};
+    for (const c of allCwds) (cwdMap[c.project_id] ||= []).push(c.cwd);
+    return rows.map(r => ({ ...r, cwds: cwdMap[r.id] || [] }));
   },
   addCwd(id, cwd) {
     const db = getDb();
@@ -102,12 +116,8 @@ export const plans = {
   },
   list({ project_id = null, status = null } = {}) {
     const db = getDb();
-    const where = [];
-    const vals = [];
-    if (project_id) { where.push('project_id = ?'); vals.push(project_id); }
-    if (status) { where.push('status = ?'); vals.push(status); }
-    const sql = `SELECT * FROM plans ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC`;
-    return db.prepare(sql).all(...vals);
+    const { clause, vals } = buildWhere({ project_id, status });
+    return db.prepare(`SELECT * FROM plans ${clause} ORDER BY created_at DESC`).all(...vals);
   },
   update(id, fields) {
     const db = getDb();
@@ -159,12 +169,8 @@ export const phases = {
   },
   list({ plan_id = null, status = null } = {}) {
     const db = getDb();
-    const where = [];
-    const vals = [];
-    if (plan_id) { where.push('plan_id = ?'); vals.push(plan_id); }
-    if (status) { where.push('status = ?'); vals.push(status); }
-    const sql = `SELECT * FROM phases ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY plan_id, idx`;
-    return db.prepare(sql).all(...vals);
+    const { clause, vals } = buildWhere({ plan_id, status });
+    return db.prepare(`SELECT * FROM phases ${clause} ORDER BY plan_id, idx`).all(...vals);
   },
   update(id, fields) {
     const db = getDb();
@@ -268,7 +274,27 @@ export const steps = {
       throw Object.assign(new Error('phase_id is required'), { status: 400 });
     }
     if (!bolt_id) {
-      throw Object.assign(new Error('bolt_id is required. Create a bolt first: lattice bolt new "Sprint N" --project <PROJ-ID>'), { status: 400 });
+      // Auto-resolve: find active bolt for this project via phase → plan → project
+      const db0 = getDb();
+      const phase = db0.prepare('SELECT * FROM phases WHERE id = ?').get(phase_id);
+      if (phase) {
+        const plan = db0.prepare('SELECT * FROM plans WHERE id = ?').get(phase.plan_id);
+        if (plan) {
+          const activeBolts = db0.prepare(
+            "SELECT * FROM bolts WHERE project_id = ? AND status = 'active' ORDER BY created_at DESC"
+          ).all(plan.project_id);
+          if (activeBolts.length === 1) {
+            bolt_id = activeBolts[0].id;
+          } else if (activeBolts.length > 1) {
+            throw Object.assign(new Error(
+              `Multiple active bolts found. Specify --bolt: ${activeBolts.map(b => b.id).join(', ')}`
+            ), { status: 400 });
+          }
+        }
+      }
+      if (!bolt_id) {
+        throw Object.assign(new Error('bolt_id is required. Create a bolt first: lattice bolt new "Sprint N" --project <PROJ-ID>'), { status: 400 });
+      }
     }
     const db = getDb();
     const id = newId('STEP');
@@ -684,8 +710,18 @@ export const runs = {
   get(id) {
     return getDb().prepare(`SELECT * FROM runs WHERE id = ?`).get(id) ?? null;
   },
-  list({ step_id = null, session_id = null } = {}) {
+  list({ step_id = null, session_id = null, project_id = null } = {}) {
     const db = getDb();
+    if (project_id) {
+      // Join through steps → phases → plans to filter by project
+      const sql = `SELECT r.* FROM runs r
+        JOIN steps s ON r.step_id = s.id
+        JOIN phases ph ON s.phase_id = ph.id
+        JOIN plans pl ON ph.plan_id = pl.id
+        WHERE pl.project_id = ?
+        ORDER BY r.started_at DESC`;
+      return db.prepare(sql).all(project_id);
+    }
     const where = [];
     const vals = [];
     if (step_id) { where.push('step_id = ?'); vals.push(step_id); }
@@ -715,12 +751,227 @@ export const activityLog = {
   },
   list({ entity_type = null, entity_id = null, limit = 50 } = {}) {
     const db = getDb();
-    const where = [];
-    const vals = [];
-    if (entity_type) { where.push('entity_type = ?'); vals.push(entity_type); }
-    if (entity_id) { where.push('entity_id = ?'); vals.push(entity_id); }
-    const sql = `SELECT * FROM activity_log ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC LIMIT ?`;
+    const { clause, vals } = buildWhere({ entity_type, entity_id });
     vals.push(limit);
-    return db.prepare(sql).all(...vals);
+    return db.prepare(`SELECT * FROM activity_log ${clause} ORDER BY created_at DESC LIMIT ?`).all(...vals);
+  },
+};
+
+// -------- Project Timeline (unified event stream) --------
+
+export const timeline = {
+  /**
+   * Unified timeline for a project — aggregates activity_log, step_comments,
+   * artifacts, runs, and questions into a single chronological feed.
+   */
+  list({ project_id, limit = 100, offset = 0, types = null }) {
+    const db = getDb();
+    const typeSet = types ? new Set(types.split(',').map(t => t.trim())) : null;
+
+    const parts = [];
+    const allVals = [];
+
+    // 1) activity_log → steps → phases → plans → project
+    if (!typeSet || typeSet.has('status_change') || typeSet.has('created') || typeSet.has('updated') || typeSet.has('assignment')) {
+      parts.push(`
+        SELECT
+          al.id,
+          CASE
+            WHEN al.field = 'assignee' THEN 'assignment'
+            ELSE al.action
+          END AS event_type,
+          al.entity_type,
+          al.entity_id,
+          COALESCE(s.title, '') AS entity_title,
+          al.actor,
+          al.created_at,
+          al.field AS detail_field,
+          al.old_value AS detail_old_value,
+          al.new_value AS detail_new_value,
+          NULL AS detail_body,
+          NULL AS detail_artifact_type,
+          NULL AS detail_agent,
+          NULL AS detail_duration_ms,
+          NULL AS detail_result
+        FROM activity_log al
+        LEFT JOIN steps s ON al.entity_type = 'step' AND al.entity_id = s.id
+        LEFT JOIN phases ph ON s.phase_id = ph.id
+        LEFT JOIN plans pl ON ph.plan_id = pl.id
+        WHERE pl.project_id = ?
+      `);
+      allVals.push(project_id);
+    }
+
+    // 2) step_comments
+    if (!typeSet || typeSet.has('comment')) {
+      parts.push(`
+        SELECT
+          cmt.id,
+          'comment' AS event_type,
+          'step' AS entity_type,
+          cmt.step_id AS entity_id,
+          COALESCE(s.title, '') AS entity_title,
+          cmt.author AS actor,
+          cmt.created_at,
+          NULL AS detail_field,
+          NULL AS detail_old_value,
+          NULL AS detail_new_value,
+          cmt.body AS detail_body,
+          NULL AS detail_artifact_type,
+          NULL AS detail_agent,
+          NULL AS detail_duration_ms,
+          NULL AS detail_result
+        FROM step_comments cmt
+        JOIN steps s ON cmt.step_id = s.id
+        JOIN phases ph ON s.phase_id = ph.id
+        JOIN plans pl ON ph.plan_id = pl.id
+        WHERE pl.project_id = ?
+      `);
+      allVals.push(project_id);
+    }
+
+    // 3) artifacts (step/phase/plan level)
+    if (!typeSet || typeSet.has('artifact')) {
+      parts.push(`
+        SELECT
+          art.id,
+          'artifact' AS event_type,
+          'step' AS entity_type,
+          COALESCE(art.step_id, art.phase_id, art.plan_id) AS entity_id,
+          COALESCE(s.title, ph2.title, pl2.title, '') AS entity_title,
+          NULL AS actor,
+          art.created_at,
+          NULL AS detail_field,
+          NULL AS detail_old_value,
+          NULL AS detail_new_value,
+          art.title AS detail_body,
+          art.type AS detail_artifact_type,
+          NULL AS detail_agent,
+          NULL AS detail_duration_ms,
+          NULL AS detail_result
+        FROM artifacts art
+        LEFT JOIN steps s ON art.step_id = s.id
+        LEFT JOIN phases ph ON s.phase_id = ph.id
+        LEFT JOIN plans pl ON ph.plan_id = pl.id
+        LEFT JOIN phases ph2 ON art.phase_id = ph2.id
+        LEFT JOIN plans pl2 ON COALESCE(ph2.plan_id, art.plan_id) = pl2.id
+        WHERE COALESCE(pl.project_id, pl2.project_id) = ?
+      `);
+      allVals.push(project_id);
+    }
+
+    // 4) runs — emit run_start and run_end as separate events
+    if (!typeSet || typeSet.has('run')) {
+      parts.push(`
+        SELECT
+          r.id || ':start' AS id,
+          'run_start' AS event_type,
+          'step' AS entity_type,
+          r.step_id AS entity_id,
+          COALESCE(s.title, '') AS entity_title,
+          r.agent AS actor,
+          r.started_at AS created_at,
+          NULL AS detail_field,
+          NULL AS detail_old_value,
+          NULL AS detail_new_value,
+          NULL AS detail_body,
+          NULL AS detail_artifact_type,
+          r.agent AS detail_agent,
+          NULL AS detail_duration_ms,
+          NULL AS detail_result
+        FROM runs r
+        JOIN steps s ON r.step_id = s.id
+        JOIN phases ph ON s.phase_id = ph.id
+        JOIN plans pl ON ph.plan_id = pl.id
+        WHERE pl.project_id = ?
+      `);
+      allVals.push(project_id);
+
+      parts.push(`
+        SELECT
+          r.id || ':end' AS id,
+          'run_end' AS event_type,
+          'step' AS entity_type,
+          r.step_id AS entity_id,
+          COALESCE(s.title, '') AS entity_title,
+          r.agent AS actor,
+          r.ended_at AS created_at,
+          NULL AS detail_field,
+          NULL AS detail_old_value,
+          NULL AS detail_new_value,
+          NULL AS detail_body,
+          NULL AS detail_artifact_type,
+          r.agent AS detail_agent,
+          (r.ended_at - r.started_at) AS detail_duration_ms,
+          r.result AS detail_result
+        FROM runs r
+        JOIN steps s ON r.step_id = s.id
+        JOIN phases ph ON s.phase_id = ph.id
+        JOIN plans pl ON ph.plan_id = pl.id
+        WHERE pl.project_id = ? AND r.ended_at IS NOT NULL
+      `);
+      allVals.push(project_id);
+    }
+
+    // 5) questions
+    if (!typeSet || typeSet.has('question')) {
+      parts.push(`
+        SELECT
+          q.id,
+          'question' AS event_type,
+          CASE
+            WHEN q.step_id IS NOT NULL THEN 'step'
+            WHEN q.phase_id IS NOT NULL THEN 'phase'
+            ELSE 'plan'
+          END AS entity_type,
+          COALESCE(q.step_id, q.phase_id, q.plan_id) AS entity_id,
+          COALESCE(s.title, ph2.title, pl2.title, '') AS entity_title,
+          q.asked_by AS actor,
+          q.created_at,
+          NULL AS detail_field,
+          NULL AS detail_old_value,
+          NULL AS detail_new_value,
+          q.body AS detail_body,
+          NULL AS detail_artifact_type,
+          NULL AS detail_agent,
+          NULL AS detail_duration_ms,
+          NULL AS detail_result
+        FROM questions q
+        LEFT JOIN steps s ON q.step_id = s.id
+        LEFT JOIN phases ph ON s.phase_id = ph.id
+        LEFT JOIN plans pl ON ph.plan_id = pl.id
+        LEFT JOIN phases ph2 ON q.phase_id = ph2.id
+        LEFT JOIN plans pl2 ON COALESCE(ph2.plan_id, q.plan_id) = pl2.id
+        WHERE COALESCE(pl.project_id, pl2.project_id) = ?
+      `);
+      allVals.push(project_id);
+    }
+
+    if (parts.length === 0) return [];
+
+    const sql = parts.join('\nUNION ALL\n') + `\nORDER BY created_at DESC\nLIMIT ? OFFSET ?`;
+    allVals.push(limit, offset);
+
+    const rows = db.prepare(sql).all(...allVals);
+
+    return rows.map(r => ({
+      id: r.id,
+      event_type: r.event_type,
+      entity_type: r.entity_type,
+      entity_id: r.entity_id,
+      entity_title: r.entity_title,
+      actor: r.actor,
+      created_at: r.created_at,
+      detail: {
+        ...(r.detail_field && { field: r.detail_field }),
+        ...(r.detail_old_value && { old_value: r.detail_old_value }),
+        ...(r.detail_new_value && { new_value: r.detail_new_value }),
+        ...(r.detail_body && { body: r.detail_body }),
+        ...(r.detail_artifact_type && { artifact_type: r.detail_artifact_type }),
+        ...(r.detail_agent && { agent: r.detail_agent }),
+        ...(r.detail_duration_ms != null && { duration_ms: r.detail_duration_ms }),
+        ...(r.detail_result && { result: r.detail_result }),
+      },
+    }));
   },
 };
