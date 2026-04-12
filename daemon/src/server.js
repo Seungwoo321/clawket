@@ -233,10 +233,15 @@ export function startServer() {
     broadcastEvent('step:updated', { id: c.req.param('id') });
     return c.json(result);
   });
-  app.delete('/steps/:id', (c) => {
-    steps.delete(c.req.param('id'));
-    broadcastEvent('step:deleted', { id: c.req.param('id') });
-    return c.json({ deleted: c.req.param('id') });
+  app.delete('/steps/:id', async (c) => {
+    // Soft delete: cancelled + 사유 코멘트 (의사결정 이력 보존)
+    const id = c.req.param('id');
+    const body = await c.req.json().catch(() => ({}));
+    const reason = body.reason || 'Cancelled via delete';
+    const result = steps.update(id, { status: 'cancelled' });
+    stepComments.create({ step_id: id, author: 'system', body: `[Cancelled] ${reason}` });
+    broadcastEvent('step:updated', { id });
+    return c.json(result);
   });
   // Bulk update steps
   app.post('/steps/bulk-update', async (c) => {
@@ -495,36 +500,41 @@ export function startServer() {
       return c.json({ context: '', project: null });
     }
 
-    // Find active plan
+    // Find all non-completed plans
     const allPlans = plans.list({ project_id: project.id });
-    const activePlan = allPlans.find(p => ['active', 'approved', 'draft'].includes(p.status));
-    if (!activePlan) {
+    const visiblePlans = allPlans.filter(p => ['active', 'approved', 'draft'].includes(p.status));
+    if (visiblePlans.length === 0) {
       return c.json({
         context: `# Lattice: ${project.name}\nNo active plan.`,
         project: project.id,
       });
     }
 
-    // Filter phases by show mode
-    const allPhases = phases.list({ plan_id: activePlan.id });
-    let visiblePhases;
-    if (show === 'active') {
-      visiblePhases = allPhases.filter(p => p.status === 'active');
-    } else if (show === 'next') {
-      const activeIdx = allPhases.findIndex(p => p.status === 'active');
-      const nextPending = allPhases.find((p, i) => i > activeIdx && p.status === 'pending');
-      visiblePhases = allPhases.filter(p =>
-        p.status === 'active' || (nextPending && p.id === nextPending.id)
-      );
-    } else {
-      visiblePhases = allPhases;
-    }
-
-    // Build compact index
+    // Build compact index — show all non-completed plans
     const lines = [];
-    lines.push(`# Lattice: ${project.name} — ${activePlan.title} (${activePlan.id})`);
-    lines.push(`Status: ${activePlan.status}`);
+    lines.push(`# Lattice: ${project.name} (${visiblePlans.length} plan${visiblePlans.length > 1 ? 's' : ''})`);
     lines.push('');
+
+    // Use first active plan as primary (for backward compat)
+    const activePlan = visiblePlans.find(p => p.status === 'active') || visiblePlans[0];
+
+    for (const plan of visiblePlans) {
+      const isActive = plan.id === activePlan.id;
+      lines.push(`## Plan: ${plan.title} (${plan.id}) [${plan.status}]${isActive ? ' ← active' : ''}`);
+
+      const allPhases = phases.list({ plan_id: plan.id });
+      let visiblePhases;
+      if (show === 'active') {
+        visiblePhases = allPhases.filter(p => p.status === 'active');
+      } else if (show === 'next') {
+        const activeIdx = allPhases.findIndex(p => p.status === 'active');
+        const nextPending = allPhases.find((p, i) => i > activeIdx && p.status === 'pending');
+        visiblePhases = allPhases.filter(p =>
+          p.status === 'active' || (nextPending && p.id === nextPending.id)
+        );
+      } else {
+        visiblePhases = allPhases;
+      }
 
     for (const phase of visiblePhases) {
       const approval = (phase.approval_required && !phase.approved_at) ? ' [needs approval]' : '';
@@ -544,12 +554,13 @@ export function startServer() {
       lines.push('');
     }
 
-    // Show summary of filtered-out phases
-    if (visiblePhases.length < allPhases.length) {
-      const hidden = allPhases.length - visiblePhases.length;
-      lines.push(`(${hidden} more phases hidden — use show=all to see all)`);
-      lines.push('');
-    }
+      // Show summary of filtered-out phases
+      if (visiblePhases.length < allPhases.length) {
+        const hidden = allPhases.length - visiblePhases.length;
+        lines.push(`(${hidden} more phases hidden — use show=all to see all)`);
+        lines.push('');
+      }
+    } // end plan loop
 
     // Recent activity (last session context)
     const recentRuns = runs.list({}).slice(0, 5);
@@ -567,7 +578,8 @@ export function startServer() {
     }
 
     // In-progress steps (carry-over from last session)
-    const inProgress = allPhases.flatMap(ph => steps.list({ phase_id: ph.id }))
+    const allPhasesFlat = visiblePlans.flatMap(p => phases.list({ plan_id: p.id }));
+    const inProgress = allPhasesFlat.flatMap(ph => steps.list({ phase_id: ph.id }))
       .filter(s => s.status === 'in_progress');
     if (inProgress.length > 0) {
       lines.push('## In Progress (carry-over)');
