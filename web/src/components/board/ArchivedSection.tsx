@@ -1,0 +1,69 @@
+import { useState } from 'react';
+import type { Step } from '../../types';
+
+const ARCHIVED_STATUSES: Step['status'][] = ['cancelled', 'superseded', 'deferred'];
+
+const ARCHIVED_STATUS_ICON: Record<string, { icon: string; label: string }> = {
+  cancelled: { icon: '\u2715', label: 'Cancelled' },
+  superseded: { icon: '\u2715', label: 'Superseded' },
+  deferred: { icon: '\u223C', label: 'Deferred' },
+};
+
+export function ArchivedSection({
+  stepsByStatus,
+  onSelectStep,
+}: {
+  stepsByStatus: Record<Step['status'], Step[]>;
+  onSelectStep: (stepId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const archivedSteps = ARCHIVED_STATUSES.flatMap(s => stepsByStatus[s]);
+
+  if (archivedSteps.length === 0) return null;
+
+  return (
+    <div className="flex-shrink-0 border-t border-border pt-2">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 text-sm text-muted hover:text-foreground transition-colors cursor-pointer px-1 py-1"
+      >
+        <span className="text-xs">{open ? '\u25BC' : '\u25B6'}</span>
+        <span>Archived</span>
+        <span className="text-xs bg-muted/20 text-muted px-1.5 py-0.5 rounded-full">{archivedSteps.length}</span>
+      </button>
+      {open && (
+        <div className="grid grid-cols-3 gap-3 mt-2">
+          {ARCHIVED_STATUSES.map(status => {
+            const items = stepsByStatus[status];
+            if (items.length === 0) return null;
+            const info = ARCHIVED_STATUS_ICON[status];
+            return (
+              <div key={status} className="space-y-1.5">
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className="text-xs text-muted">{info.icon}</span>
+                  <span className="text-xs font-medium text-muted">{info.label}</span>
+                  <span className="text-xs text-muted">({items.length})</span>
+                </div>
+                {items.map(step => (
+                  <button
+                    key={step.id}
+                    onClick={() => onSelectStep(step.id)}
+                    className="w-full text-left rounded-md border border-border bg-background/50 p-2 hover:bg-surface-hover transition-colors cursor-pointer opacity-60 hover:opacity-100"
+                  >
+                    {step.ticket_number && (
+                      <span className="font-mono text-[10px] text-muted block">{step.ticket_number}</span>
+                    )}
+                    <p className="text-xs text-muted line-through">{step.title}</p>
+                    {step.assignee && (
+                      <span className="text-[10px] text-muted mt-1 inline-block">@{step.assignee}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
