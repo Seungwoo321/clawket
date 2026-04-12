@@ -15,7 +15,7 @@
   "skills": "./skills/",
   "hooks": "./hooks/hooks.json",
   "setup": {
-    "command": "node scripts/setup.js",
+    "command": "node scripts/setup.cjs",
     "timeout": 120
   }
 }
