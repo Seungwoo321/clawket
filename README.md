@@ -17,11 +17,31 @@ Lattice is a structured state layer that replaces Jira + Confluence for LLM-driv
 - **Web Dashboard** — Summary, Plans, Board (Kanban), Backlog, Timeline, and Wiki views
 - **Drag & Drop** — Kanban DnD for status changes, backlog DnD for bolt assignment
 - **Artifact Wiki** — Markdown/JSON/YAML document management with version history
+- **Vector Search** — FTS5 keyword + sqlite-vec semantic hybrid search
 - **Ticket Numbers** — Human-readable IDs (LAT-1, LAT-2) alongside internal ULIDs
 - **Hook Integration** — Auto-injects project context into every Claude Code session
 - **Step Enforcement** — Blocks work unless a step is registered (PreToolUse hook)
-- **Run Tracking** — Automatic execution logging per agent/session
+- **Plan Mode Compatible** — Auto-imports plans on ExitPlanMode
+- **Drawer Resize** — Drag to resize detail panel
 - **Light/Dark Theme** — Theme toggle with persistent preference
+
+## Installation
+
+```bash
+# 1. Add marketplace
+/plugin marketplace add Seungwoo321/lattice
+
+# 2. Install plugin
+/plugin install lattice@Seungwoo321-lattice
+```
+
+Setup hook automatically installs daemon dependencies (`npm install`) on first use.
+
+### Prerequisites
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
+- Node.js 20+
+- Rust toolchain (for building CLI from source, or use prebuilt binary in `bin/`)
 
 ## Architecture
 
@@ -32,116 +52,30 @@ Claude Code ──(hooks)──→ latticed (Node.js daemon)
                               ▼
                      ~/.local/share/lattice/db.sqlite
 
-Web Dashboard (React) ──→ latticed HTTP API
+Web Dashboard (React) ──→ latticed HTTP API (static file serving)
 ```
 
-- **lattice** — Rust CLI (~10ms cold start). Single binary for all operations.
-- **latticed** — Node.js + Hono HTTP daemon. Runs in the background over Unix socket + TCP.
-- **Hooks** — SessionStart auto-starts the daemon and injects project context. PreToolUse enforces step registration. PostToolUse records file changes. Stop hook finalizes runs.
-- **Skills** — `/lattice` skill provides command reference for the LLM.
-
-## Installation
-
-```bash
-# 1. Add marketplace
-/plugin marketplace add Seungwoo321/lattice
-
-# 2. Install plugin
-/plugin install lattice@Seungwoo321/lattice
-```
-
-Or for local development:
-
-```bash
-claude --plugin-dir /path/to/lattice
-```
-
-The plugin's setup script will automatically create XDG directories on first use.
-
-### Prerequisites
-
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
-- Node.js 20+
-- Rust toolchain (for building CLI from source, or use prebuilt binary)
-
-## Entity Hierarchy
+## Project Structure
 
 ```
-Project → Plan → Phase → Step
-                   │       ├── Artifact (documents, decisions, wireframes)
-                   │       ├── Run (execution log per agent/session)
-                   │       ├── StepComment (discussion)
-                   │       ├── depends_on (step dependencies)
-                   │       └── parent_step_id (unlimited nesting)
-                   │
-                   └── Bolt (sprint/iteration cycle)
-```
-
-| Entity | Purpose |
-|--------|---------|
-| **Project** | Logical project identity, maps to 1+ working directories |
-| **Plan** | High-level plan (imported from Claude Code plan mode) |
-| **Phase** | Milestone grouping of steps, supports approval gates |
-| **Step** | Atomic work unit — the "ticket" with priority, complexity, ticket_number |
-| **Bolt** | Sprint/iteration cycle — groups steps into time-boxed work |
-| **Artifact** | Deliverable attached to step/phase/plan (markdown, YAML, JSON) with versioning |
-| **Run** | Execution record — which agent worked on which step, when |
-| **Question** | Decision point — asked by LLM or human, answered asynchronously |
-| **StepComment** | Discussion thread on a step |
-
-## Hooks
-
-Lattice installs the following Claude Code hooks:
-
-| Hook | Trigger | Purpose |
-|------|---------|---------|
-| **SessionStart** | Session begin | Start daemon, inject dashboard context + rules |
-| **UserPromptSubmit** | Each user message | Inject active step context, warn if no active steps |
-| **PreToolUse** | Before Agent/Edit/Write/Bash | Block work if no active step registered |
-| **PostToolUse** | After Edit/Write | Record file modifications to active run |
-| **Stop** | Session end | Finalize active runs |
-
-## Quick Start
-
-```bash
-# Check daemon status
-lattice daemon status
-
-# View project dashboard
-lattice dashboard --cwd .
-
-# Dashboard with filter
-lattice dashboard --cwd . --show active   # active steps only
-lattice dashboard --cwd . --show all      # full view
-
-# List steps
-lattice step list --phase-id PHASE-xxx
-
-# Update step status
-lattice step update STEP-xxx --status in_progress
-
-# Search across steps
-lattice step search "migration"
-
-# Create a new step
-lattice step new "Fix auth bug" --phase PHASE-xxx --assignee main --body "Description"
-
-# Append to step body
-lattice step append-body STEP-xxx --text "Additional notes"
-
-# Track execution
-lattice run start --step STEP-xxx --agent my-agent
-lattice run finish RUN-xxx --result success --notes "Done"
-
-# Bolt (sprint) management
-lattice bolt list --project-id PROJ-xxx
-lattice bolt new "Sprint 1" --project PROJ-xxx
-lattice bolt update BOLT-xxx --status active
+lattice/
+├── cli/              # Rust CLI source
+├── daemon/           # Node.js daemon source + migrations
+│   ├── src/          # Server, repo, db, embeddings
+│   └── web/          # Built React dashboard (static files)
+├── web/              # React dashboard source (dev only)
+├── scripts/          # Hook scripts (.cjs)
+├── hooks/            # hooks.json
+├── skills/           # /lattice skill
+├── prompts/          # rules.md (SessionStart injection)
+├── bin/              # CLI binary (prebuilt)
+├── screenshots/      # Dashboard screenshots
+└── .claude-plugin/   # Plugin metadata
 ```
 
 ## Web Dashboard
 
-The web dashboard provides 6 views:
+Access at `http://localhost:<port>` when daemon is running. 6 views:
 
 | View | Description |
 |------|-------------|
@@ -150,9 +84,7 @@ The web dashboard provides 6 views:
 | **Board** | Kanban board with drag-and-drop status changes |
 | **Backlog** | Bolt-grouped backlog with drag-and-drop assignment |
 | **Timeline** | Chronological/agent/phase-grouped activity with gantt bars |
-| **Wiki** | Artifact browser with markdown/JSON/YAML rendering and version history |
-
-Access the dashboard at `http://localhost:<port>` when the daemon is running.
+| **Wiki** | Artifact + project docs browser with markdown rendering |
 
 ### Screenshots
 
@@ -168,29 +100,21 @@ Access the dashboard at `http://localhost:<port>` when the daemon is running.
 |----------|------|
 | ![Timeline](screenshots/05-timeline.png) | ![Wiki](screenshots/06-wiki.png) |
 
-## Design Principles
-
-1. **Dual-consumer storage** — One store, two views. LLM reads via CLI, humans read via web dashboard. LLM never drives web DOM.
-2. **Structured format only** — JSON/YAML/Markdown frontmatter. No LLM summaries on write path. No vector DB.
-3. **State layer** — Storage + API only. No business logic. Harness logic stays in Claude Code.
-4. **Isolation by step** — Sub-agent delegation unit is step, not session.
-5. **Cache-first** — Step body is append-only. Volatile fields (status, assignee) at tail to preserve prompt cache prefix.
-6. **No auto-injection** — New sessions start clean. Past context only via explicit query.
-
-## Data Storage (XDG)
-
-| Path | Purpose |
-|------|---------|
-| `~/.local/share/lattice/` | SQLite database |
-| `~/.cache/lattice/` | Socket, PID, port files |
-| `~/.config/lattice/` | Configuration |
-| `~/.local/state/lattice/` | Logs |
-
-All paths can be overridden via `LATTICE_{DATA,CACHE,CONFIG,STATE}_DIR` environment variables.
-
 ## Development
 
-The source code is in a separate private repository ([lattice-dev](https://github.com/Seungwoo321/lattice-dev)).
+```bash
+# Daemon
+cd daemon && npm install
+
+# Web dashboard
+cd web && pnpm install && pnpm dev
+
+# CLI
+cd cli && cargo build
+
+# Build all + sync to plugin
+bash scripts/sync-plugin.sh
+```
 
 ## License
 
