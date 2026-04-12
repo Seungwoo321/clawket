@@ -1,0 +1,51 @@
+#!/bin/sh
+
+echo "🔍 Running pre-commit checks..."
+
+# Check if web/ files are staged
+WEB_STAGED=$(git diff --cached --name-only -- 'web/')
+
+if [ -n "$WEB_STAGED" ]; then
+  echo "📦 web/ changes detected"
+
+  # Lint check
+  echo "  ▸ ESLint..."
+  cd web && npx eslint . --quiet
+  LINT_EXIT=$?
+  cd ..
+
+  if [ $LINT_EXIT -ne 0 ]; then
+    echo "❌ Lint check failed"
+    exit 1
+  fi
+  echo "  ✅ Lint passed"
+
+  # Type check (TS files)
+  TS_STAGED=$(echo "$WEB_STAGED" | grep -E '\.(ts|tsx)$')
+  if [ -n "$TS_STAGED" ]; then
+    echo "  ▸ TypeScript type check..."
+    cd web && npx tsc -b --noEmit
+    TSC_EXIT=$?
+    cd ..
+
+    if [ $TSC_EXIT -ne 0 ]; then
+      echo "❌ Type check failed"
+      exit 1
+    fi
+    echo "  ✅ Type check passed"
+  fi
+
+  # Build check
+  echo "  ▸ Build check..."
+  cd web && npx vite build
+  BUILD_EXIT=$?
+  cd ..
+
+  if [ $BUILD_EXIT -ne 0 ]; then
+    echo "❌ Build check failed"
+    exit 1
+  fi
+  echo "  ✅ Build passed"
+fi
+
+echo "✅ All pre-commit checks passed"
