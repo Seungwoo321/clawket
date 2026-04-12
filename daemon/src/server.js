@@ -117,7 +117,27 @@ export function startServer() {
   });
   app.post('/plans', async (c) => c.json(plans.create(await c.req.json())));
   app.get('/plans/:id', (c) => jsonOr404(c, plans.get(c.req.param('id'))));
-  app.patch('/plans/:id', async (c) => { const r = plans.update(c.req.param('id'), await c.req.json()); broadcastEvent('plan:updated', { id: c.req.param('id') }); return c.json(r); });
+  app.patch('/plans/:id', async (c) => {
+    const body = await c.req.json();
+    // Block draft→active without approval (use POST /plans/:id/approve instead)
+    if (body.status === 'active') {
+      const existing = plans.get(c.req.param('id'));
+      if (existing && existing.status === 'draft') {
+        return c.json({ error: 'Use POST /plans/:id/approve to activate a draft plan' }, 400);
+      }
+    }
+    const r = plans.update(c.req.param('id'), body);
+    broadcastEvent('plan:updated', { id: c.req.param('id') });
+    return c.json(r);
+  });
+  app.post('/plans/:id/approve', async (c) => {
+    const plan = plans.get(c.req.param('id'));
+    if (!plan) return c.json({ error: 'not found' }, 404);
+    if (plan.status !== 'draft') return c.json({ error: 'Only draft plans can be approved' }, 400);
+    const r = plans.update(c.req.param('id'), { status: 'active', approved_at: Date.now() });
+    broadcastEvent('plan:updated', { id: c.req.param('id') });
+    return c.json(r);
+  });
   app.delete('/plans/:id', (c) => {
     plans.delete(c.req.param('id'));
     return c.json({ deleted: c.req.param('id') });
@@ -323,6 +343,11 @@ export function startServer() {
     }));
   });
 
+  app.post('/activity', async (c) => {
+    const body = await c.req.json();
+    return c.json(activityLog.record(body));
+  });
+
   // ========== Step Relations ==========
   app.get('/steps/:id/relations', (c) => {
     return c.json(stepRelations.list({ step_id: c.req.param('id') }));
@@ -347,7 +372,27 @@ export function startServer() {
   });
   app.post('/bolts', async (c) => c.json(bolts.create(await c.req.json())));
   app.get('/bolts/:id', (c) => jsonOr404(c, bolts.get(c.req.param('id'))));
-  app.patch('/bolts/:id', async (c) => { const r = bolts.update(c.req.param('id'), await c.req.json()); broadcastEvent('bolt:updated', { id: c.req.param('id') }); return c.json(r); });
+  app.patch('/bolts/:id', async (c) => {
+    const body = await c.req.json();
+    // Block planning→active without approval
+    if (body.status === 'active') {
+      const existing = bolts.get(c.req.param('id'));
+      if (existing && existing.status === 'planning') {
+        return c.json({ error: 'Use POST /bolts/:id/activate to start a planning bolt' }, 400);
+      }
+    }
+    const r = bolts.update(c.req.param('id'), body);
+    broadcastEvent('bolt:updated', { id: c.req.param('id') });
+    return c.json(r);
+  });
+  app.post('/bolts/:id/activate', async (c) => {
+    const bolt = bolts.get(c.req.param('id'));
+    if (!bolt) return c.json({ error: 'not found' }, 404);
+    if (bolt.status !== 'planning') return c.json({ error: 'Only planning bolts can be activated' }, 400);
+    const r = bolts.update(c.req.param('id'), { status: 'active', started_at: Date.now() });
+    broadcastEvent('bolt:updated', { id: c.req.param('id') });
+    return c.json(r);
+  });
   app.delete('/bolts/:id', (c) => {
     bolts.delete(c.req.param('id'));
     return c.json({ deleted: c.req.param('id') });
@@ -506,6 +551,30 @@ export function startServer() {
     return c.json({ imported: imported.length, skipped: skipped.length, items: imported, skippedItems: skipped, dry_run });
   });
 
+  // ========== Artifact Export (Artifact → docs/) ==========
+  app.post('/artifacts/export', async (c) => {
+    const { cwd, plan_id = null, phase_id = null } = await c.req.json();
+    if (!cwd) return c.json({ error: 'cwd required' }, 400);
+
+    const docsDir = join(cwd, 'docs');
+    const { mkdirSync, writeFileSync: writeFS } = require('fs');
+    mkdirSync(docsDir, { recursive: true });
+
+    const allArtifacts = artifacts.list({ plan_id, phase_id });
+    const exported = [];
+
+    for (const art of allArtifacts) {
+      if (!art.content) continue;
+      const slug = art.title.replace(/[^a-zA-Z0-9가-힣\s-]/g, '').replace(/\s+/g, '-').toLowerCase();
+      const ext = art.content_format === 'json' ? '.json' : art.content_format === 'yaml' ? '.yaml' : '.md';
+      const filePath = join(docsDir, `${slug}${ext}`);
+      writeFS(filePath, art.content, 'utf-8');
+      exported.push({ id: art.id, title: art.title, path: relative(cwd, filePath) });
+    }
+
+    return c.json({ exported: exported.length, items: exported });
+  });
+
   // ========== Artifact Versions ==========
   app.get('/artifacts/:id/versions', (c) => {
     return c.json(artifactVersions.list({ artifact_id: c.req.param('id') }));
@@ -639,9 +708,19 @@ export function startServer() {
       return c.json({ context: '', project: null });
     }
 
-    // Find all non-completed plans
+    // Find visible plans: non-completed + any completed plan that has in_progress steps
     const allPlans = plans.list({ project_id: project.id });
-    const visiblePlans = allPlans.filter(p => ['active', 'approved', 'draft'].includes(p.status));
+    const visiblePlans = allPlans.filter(p => {
+      if (['active', 'approved', 'draft'].includes(p.status)) return true;
+      // Include completed plans that still have in_progress steps (defensive)
+      if (p.status === 'completed') {
+        const planPhases = phases.list({ plan_id: p.id });
+        return planPhases.some(ph =>
+          steps.list({ phase_id: ph.id }).some(s => s.status === 'in_progress')
+        );
+      }
+      return false;
+    });
     if (visiblePlans.length === 0) {
       return c.json({
         context: `# Lattice: ${project.name}\nNo active plan.`,

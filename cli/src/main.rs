@@ -166,6 +166,8 @@ enum PlanAction {
         status: Option<String>,
     },
     Delete { id: String },
+    /// Approve a draft plan (draft → active)
+    Approve { id: String },
     Import {
         file: String,
         #[arg(long)]
@@ -251,6 +253,8 @@ enum BoltAction {
         status: Option<String>,
     },
     Delete { id: String },
+    /// Activate a planning bolt (planning → active)
+    Activate { id: String },
     /// List steps assigned to this bolt
     Steps { id: String },
     /// List backlog steps (not assigned to any bolt)
@@ -395,6 +399,15 @@ enum ArtifactAction {
         /// Preview without creating
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Export Artifacts to docs/ directory
+    Export {
+        #[arg(long)]
+        cwd: String,
+        #[arg(long)]
+        plan_id: Option<String>,
+        #[arg(long)]
+        phase_id: Option<String>,
     },
 }
 
@@ -720,6 +733,9 @@ async fn main() -> Result<()> {
             PlanAction::Delete { id } => {
                 output(&client::request(&c, "DELETE", &format!("/plans/{id}"), None).await?);
             }
+            PlanAction::Approve { id } => {
+                output(&client::request(&c, "POST", &format!("/plans/{id}/approve"), None).await?);
+            }
             PlanAction::Import { file, project, cwd, source, dry_run } => {
                 output(&client::request(&c, "POST", "/plans/import", Some(json!({
                     "file": file, "project": project, "cwd": cwd, "source": source, "dryRun": dry_run,
@@ -780,6 +796,9 @@ async fn main() -> Result<()> {
             }
             BoltAction::Delete { id } => {
                 output(&client::request(&c, "DELETE", &format!("/bolts/{id}"), None).await?);
+            }
+            BoltAction::Activate { id } => {
+                output(&client::request(&c, "POST", &format!("/bolts/{id}/activate"), None).await?);
             }
             BoltAction::Steps { id } => {
                 output(&client::get(&c, &format!("/bolts/{id}/steps")).await?);
@@ -861,6 +880,11 @@ async fn main() -> Result<()> {
             ArtifactAction::Import { cwd, plan_id, phase_id, scope, dry_run } => {
                 output(&client::request(&c, "POST", "/artifacts/import", Some(json!({
                     "cwd": cwd, "plan_id": plan_id, "phase_id": phase_id, "scope": scope, "dry_run": dry_run,
+                }))).await?);
+            }
+            ArtifactAction::Export { cwd, plan_id, phase_id } => {
+                output(&client::request(&c, "POST", "/artifacts/export", Some(json!({
+                    "cwd": cwd, "plan_id": plan_id, "phase_id": phase_id,
                 }))).await?);
             }
         },
