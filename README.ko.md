@@ -20,7 +20,13 @@ Lattice는 LLM 기반 개발을 위한 구조화된 상태 레이어로, Jira + 
 - **티켓 번호** — 내부 ULID와 함께 사람이 읽을 수 있는 ID (LAT-1, LAT-2)
 - **훅 통합** — 모든 Claude Code 세션에 프로젝트 컨텍스트 자동 주입
 - **스텝 등록 강제** — 활성 스텝 없이 작업 불가 (PreToolUse 훅)
+- **벡터 검색** — FTS5 키워드 + sqlite-vec 시맨틱 하이브리드 검색
+- **통합 타임라인** — 상태 변경, 코멘트, 아티팩트, 실행, 질문을 통합한 활동 스트림
+- **인라인 편집** — Plans 뷰에서 Step 제목/상태 더블클릭 직접 편집
+- **프로젝트 설정** — Summary 뷰에서 프로젝트명, 설명, 작업 디렉토리 편집
 - **실행 추적** — 에이전트/세션별 자동 실행 기록
+- **자동 상태 동기화** — Stop 훅에서 Phase/Plan 완료 상태 자동 전환
+- **토큰 최적화** — 완료 Phase는 SessionStart 컨텍스트에서 요약만 주입
 - **라이트/다크 테마** — 영구 저장되는 테마 전환
 
 ## 아키텍처
@@ -99,7 +105,7 @@ Lattice는 다음 Claude Code 훅을 설치합니다:
 | **UserPromptSubmit** | 사용자 메시지마다 | 활성 스텝 컨텍스트 주입, 활성 스텝 없으면 경고 |
 | **PreToolUse** | Agent/Edit/Write/Bash 전 | 활성 스텝 없으면 작업 차단 |
 | **PostToolUse** | Edit/Write 후 | 파일 변경 사항을 활성 실행에 기록 |
-| **Stop** | 세션 종료 | 활성 실행 종료 처리 |
+| **Stop** | 세션 종료 | 활성 실행 종료 + Phase/Plan 상태 자동 동기화 |
 
 ## 빠른 시작
 
@@ -149,7 +155,7 @@ lattice bolt update BOLT-xxx --status active
 | **계획** | 트리 뷰 — 인라인 편집, 일괄 액션, 체크박스 선택 |
 | **보드** | 칸반 보드 — 드래그 앤 드롭 상태 변경 |
 | **백로그** | 볼트별 그룹화 — 드래그 앤 드롭 배정 |
-| **타임라인** | 시간순/에이전트별/단계별 활동 이력 + 간트 바 |
+| **타임라인** | 통합 활동 스트림 — 필터, 날짜 그룹, Run sparkline |
 | **위키** | Artifact 브라우저 — 마크다운/JSON/YAML 렌더링 및 버전 이력 |
 
 데몬 실행 중 `http://localhost:<port>`에서 접근할 수 있습니다.
@@ -171,7 +177,7 @@ lattice bolt update BOLT-xxx --status active
 ## 설계 원칙
 
 1. **이중 소비자 저장소** — 하나의 저장소, 두 개의 뷰. LLM은 CLI로, 사람은 웹 대시보드로 조회. LLM이 웹 DOM을 직접 조작하지 않음.
-2. **구조화된 포맷만** — JSON/YAML/마크다운 프론트매터. 쓰기 경로에 LLM 요약 없음. 벡터 DB 없음.
+2. **구조화된 포맷만** — JSON/YAML/마크다운 프론트매터. 쓰기 경로에 LLM 요약 없음. sqlite-vec 벡터 검색 지원.
 3. **상태 레이어** — 저장소 + API만 제공. 비즈니스 로직 없음. 하네스 로직은 Claude Code에 유지.
 4. **Step 단위 격리** — 서브에이전트 위임 단위는 Step(세션 아님).
 5. **캐시 우선** — Step body는 append-only. 가변 필드(status, assignee)는 꼬리에 배치하여 프롬프트 캐시 프리픽스 보존.
@@ -190,7 +196,16 @@ lattice bolt update BOLT-xxx --status active
 
 ## 개발
 
-소스 코드는 별도의 비공개 저장소([lattice-dev](https://github.com/Seungwoo321/lattice-dev))에 있습니다.
+```bash
+# Daemon
+cd daemon && pnpm install
+
+# Web dashboard
+cd web && pnpm install && pnpm dev
+
+# CLI
+cd cli && cargo build
+```
 
 ## 라이선스
 
