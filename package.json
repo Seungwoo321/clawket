@@ -1,0 +1,13 @@
+{
+  "name": "lattice-mono",
+  "private": true,
+  "scripts": {
+    "lint": "cd web && npx eslint .",
+    "typecheck": "cd web && npx tsc -b",
+    "build": "cd web && npx vite build",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}
