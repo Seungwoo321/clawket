@@ -119,32 +119,36 @@ try {
   rules = readFileSync(resolve(pluginRoot, 'prompts', 'rules.md'), 'utf-8').trim();
 } catch {}
 
+// Resolve web URL once
+function getWebUrl() {
+  try {
+    const portFile = require('path').join(require('os').homedir(), '.cache', 'lattice', 'latticed.port');
+    const port = readFileSync(portFile, 'utf-8').trim();
+    return `http://localhost:${port}`;
+  } catch { return ''; }
+}
+
 // Main
 ensureDaemon();
 const cwd = process.env.HOOK_CWD || process.cwd();
 
 // Full context for Claude (show=all)
 const context = exec(`${LATTICE} dashboard --cwd "${cwd}" --show all`);
+const webUrl = getWebUrl();
 
 if (!context) {
   const noProjectMsg = `Lattice: No project registered for this directory.\nRun: lattice project new "<name>" --cwd "${cwd}"`;
+  const statusLine = webUrl
+    ? `  ${C.dim}Web: ${C.reset}${C.cyan}${webUrl}${C.reset}`
+    : '';
   console.log(JSON.stringify({
     hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: noProjectMsg + (rules ? '\n\n' + rules : '') },
-    systemMessage: `${C.cyan}Lattice${C.reset} ${C.dim}active${C.reset} ${C.yellow}— no project for this directory${C.reset}`
+    systemMessage: `${C.cyan}Lattice${C.reset} ${C.dim}active${C.reset} ${C.yellow}— no project for this directory${C.reset}` + (statusLine ? '\n' + statusLine : '')
   }));
   process.exit(0);
 }
 
 const summary = buildSummary(context);
-
-// Daemon status + web port
-const daemonStatus = exec(`${LATTICE} daemon status`);
-const portFile = require('path').join(require('os').homedir(), '.cache', 'lattice', 'latticed.port');
-let webUrl = '';
-try {
-  const port = readFileSync(portFile, 'utf-8').trim();
-  webUrl = `http://localhost:${port}`;
-} catch {}
 
 const statusLine = webUrl
   ? `${C.dim}Daemon: ${C.reset}${C.green}running${C.reset} ${C.dim}Web: ${C.reset}${C.cyan}${webUrl}${C.reset}`

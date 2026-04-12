@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Lattice PostToolUse hook for ExitPlanMode — auto-import plan file.
 // Only imports if a project is already registered for this cwd.
-// Does NOT create new projects automatically.
+// Only considers plan files modified within the last 60 seconds (safety for multi-project).
 const { execSync } = require('child_process');
 const { resolve, dirname } = require('path');
 const { readdirSync, statSync } = require('fs');
@@ -20,7 +20,6 @@ const cwd = process.env.HOOK_CWD || process.cwd();
 // Check if a project exists for this cwd
 const dashboard = exec(`${LATTICE} dashboard --cwd "${cwd}"`);
 if (!dashboard) {
-  // No project registered — do not auto-import
   process.stderr.write(`[lattice] No project for ${cwd} — skipping plan auto-import\n`);
   process.exit(0);
 }
@@ -33,22 +32,30 @@ if (!projectName) {
   process.exit(0);
 }
 
-// Find the most recently modified plan file
+// Find plan files modified within the last 60 seconds (not just "most recent")
 const plansDir = resolve(homedir(), '.claude', 'plans');
+const MAX_AGE_MS = 60_000;
 try {
+  const now = Date.now();
   const files = readdirSync(plansDir)
     .filter(f => f.endsWith('.md'))
     .map(f => ({ name: f, mtime: statSync(resolve(plansDir, f)).mtimeMs }))
+    .filter(f => (now - f.mtime) < MAX_AGE_MS)
     .sort((a, b) => b.mtime - a.mtime);
 
-  if (files.length > 0) {
-    const latest = resolve(plansDir, files[0].name);
+  if (files.length === 0) {
+    process.stderr.write(`[lattice] No recently modified plan files (within ${MAX_AGE_MS / 1000}s) — skipping\n`);
+    process.exit(0);
+  }
 
-    // Import with explicit project name (not cwd)
-    const result = exec(`${LATTICE} plan import "${latest}" --project "${projectName}"`);
-    if (result) {
-      process.stderr.write(`[lattice] Auto-imported plan: ${files[0].name} → ${projectName}\n`);
-    }
+  if (files.length > 1) {
+    process.stderr.write(`[lattice] Warning: ${files.length} plan files modified recently, using most recent: ${files[0].name}\n`);
+  }
+
+  const latest = resolve(plansDir, files[0].name);
+  const result = exec(`${LATTICE} plan import "${latest}" --project "${projectName}"`);
+  if (result) {
+    process.stderr.write(`[lattice] Auto-imported plan: ${files[0].name} → ${projectName}\n`);
   }
 } catch {
   // Plans dir not found or import failed — silently skip
