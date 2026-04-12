@@ -179,7 +179,15 @@ export const phases = {
     }
     if ('status' in fields) {
       if (fields.status === 'active') { sets.push('started_at = COALESCE(started_at, ?)'); vals.push(now()); }
-      if (fields.status === 'completed') { sets.push('completed_at = ?'); vals.push(now()); }
+      if (fields.status === 'completed') {
+        // Block completion if any step is still todo/in_progress
+        const phaseSteps = steps.list({ phase_id: id });
+        const hasIncomplete = phaseSteps.some(s => s.status === 'todo' || s.status === 'in_progress');
+        if (hasIncomplete) {
+          throw Object.assign(new Error(`Cannot complete phase: ${phaseSteps.filter(s => s.status === 'todo' || s.status === 'in_progress').length} step(s) still incomplete`), { status: 400 });
+        }
+        sets.push('completed_at = ?'); vals.push(now());
+      }
     }
     if (sets.length === 0) return phases.get(id);
     vals.push(id);
@@ -256,6 +264,12 @@ export const steps = {
   create({ phase_id, title, body = '', assignee = null, idx = null, depends_on = [],
            parent_step_id = null, priority = 'medium', complexity = null, estimated_edits = null,
            bolt_id = null, reporter = null, type = 'task' }) {
+    if (!phase_id) {
+      throw Object.assign(new Error('phase_id is required'), { status: 400 });
+    }
+    if (!bolt_id) {
+      throw Object.assign(new Error('bolt_id is required. Create a bolt first: lattice bolt new "Sprint N" --project <PROJ-ID>'), { status: 400 });
+    }
     const db = getDb();
     const id = newId('STEP');
     const ts = now();
@@ -384,13 +398,16 @@ export const steps = {
       }
     }
 
-    // Auto-complete phase if all steps are done
+    // Auto-complete phase if ALL steps (including children at any depth) are done
     if ('status' in fields && ['done', 'cancelled', 'superseded'].includes(fields.status)) {
       const updatedStep = steps.get(id);
       if (updatedStep) {
+        // Get all steps in this phase (flat list includes all depths via phase_id)
         const phaseSteps = steps.list({ phase_id: updatedStep.phase_id });
-        const allDone = phaseSteps.every(s => ['done', 'cancelled', 'superseded'].includes(s.status));
-        if (allDone && phaseSteps.length > 0) {
+        const terminalStatuses = new Set(['done', 'cancelled', 'superseded']);
+        const allDone = phaseSteps.every(s => terminalStatuses.has(s.status));
+        const hasTodo = phaseSteps.some(s => s.status === 'todo' || s.status === 'in_progress');
+        if (allDone && !hasTodo && phaseSteps.length > 0) {
           const phase = phases.get(updatedStep.phase_id);
           if (phase && phase.status !== 'completed') {
             phases.update(updatedStep.phase_id, { status: 'completed' });
@@ -505,6 +522,9 @@ export const stepRelations = {
 
 export const bolts = {
   create({ project_id, title, goal = null, idx = null }) {
+    if (!project_id) {
+      throw Object.assign(new Error('project_id is required'), { status: 400 });
+    }
     const db = getDb();
     const id = newId('BOLT');
     const ts = now();
