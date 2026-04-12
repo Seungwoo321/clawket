@@ -93,6 +93,10 @@ async function main() {
         await apiPatch(port, `/phases/${phase.id}`, { status: 'completed' });
       } else {
         allPhasesCompleted = false;
+        // Auto-promote pending → active if any step is in_progress
+        if (phase.status === 'pending' && steps.some(s => s.status === 'in_progress')) {
+          await apiPatch(port, `/phases/${phase.id}`, { status: 'active' });
+        }
       }
     }
 
