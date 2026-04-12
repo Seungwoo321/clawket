@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Plan, Phase, Step, Bolt } from '../types';
 import api from '../api';
+import { useInlineEdit } from '../hooks/useInlineEdit';
 import StatusBadge from './StatusBadge';
 import { Button, Select } from './ui';
 
@@ -61,10 +62,11 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
   const [bolts, setBolts] = useState<Bolt[]>([]);
   const [bulkUpdating, setBulkUpdating] = useState(false);
 
-  // Inline edit state
-  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
-  const [inlineEditField, setInlineEditField] = useState<'title' | 'status' | null>(null);
-  const [inlineEditValue, setInlineEditValue] = useState('');
+  // Inline edit (custom hook)
+  const inlineEdit = useInlineEdit(async (stepId, field, value) => {
+    await api.updateStep(stepId, { [field]: value });
+    setRefreshCounter(c => c + 1);
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -147,22 +149,7 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
     });
   }
 
-  const saveInlineEdit = useCallback(async (stepId: string, field: 'title' | 'status', value: string) => {
-    if (!value.trim()) return;
-    try {
-      await api.updateStep(stepId, { [field]: value.trim() });
-      setInlineEditId(null);
-      setInlineEditField(null);
-      setRefreshCounter(c => c + 1);
-    } catch (err) {
-      console.error('Inline edit failed:', err);
-    }
-  }, []);
-
-  const cancelInlineEdit = useCallback(() => {
-    setInlineEditId(null);
-    setInlineEditField(null);
-  }, []);
+  // inlineEdit.save and inlineEdit.cancel are now in useInlineEdit hook
 
   const allStepIds = plans.flatMap((p) => p.phases.flatMap((ph) => ph.steps.map((s) => s.id)));
 
@@ -340,15 +327,15 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                     phase.steps.map((step) => {
                       const si = stepStatusIcon[step.status];
                       const isSelected = selectedStepIds.has(step.id);
-                      const isInlineTitle = inlineEditId === step.id && inlineEditField === 'title';
-                      const isInlineStatus = inlineEditId === step.id && inlineEditField === 'status';
+                      const isInlineTitle = inlineEdit.editId === step.id && inlineEdit.editField === 'title';
+                      const isInlineStatus = inlineEdit.editId === step.id && inlineEdit.editField === 'status';
                       return (
                         <div
                           key={step.id}
                           onClick={() => {
                             if (editMode) {
                               toggleStepSelection(step.id);
-                            } else if (!inlineEditId) {
+                            } else if (!inlineEdit.editId) {
                               onSelectItem({ type: 'step', id: step.id });
                             }
                           }}
@@ -369,14 +356,17 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                           {isInlineStatus ? (
                             <select
                               className="text-xs bg-background border border-primary rounded px-1 py-0.5 text-foreground focus:outline-none cursor-pointer shrink-0"
-                              value={inlineEditValue}
+                              value={inlineEdit.editValue}
                               autoFocus
                               onClick={e => e.stopPropagation()}
                               onChange={async e => {
-                                await saveInlineEdit(step.id, 'status', e.target.value);
+                                inlineEdit.setEditValue(e.target.value);
+                                await api.updateStep(step.id, { status: e.target.value as Step['status'] });
+                                inlineEdit.cancel();
+                                setRefreshCounter(c => c + 1);
                               }}
-                              onBlur={cancelInlineEdit}
-                              onKeyDown={e => { if (e.key === 'Escape') cancelInlineEdit(); }}
+                              onBlur={inlineEdit.cancel}
+                              onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancel(); }}
                             >
                               {STEP_STATUSES.map(s => (
                                 <option key={s.value} value={s.value}>{s.label}</option>
@@ -388,9 +378,7 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                               title={`${step.status} — double-click to change`}
                               onDoubleClick={e => {
                                 e.stopPropagation();
-                                setInlineEditId(step.id);
-                                setInlineEditField('status');
-                                setInlineEditValue(step.status);
+                                inlineEdit.start(step.id, 'status', step.status);
                               }}
                             >{si.icon}</span>
                           )}
@@ -402,22 +390,22 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                           {isInlineTitle ? (
                             <input
                               className="text-sm text-foreground truncate flex-1 bg-background border border-primary rounded px-1 py-0.5 focus:outline-none"
-                              value={inlineEditValue}
+                              value={inlineEdit.editValue}
                               autoFocus
                               onClick={e => e.stopPropagation()}
-                              onChange={e => setInlineEditValue(e.target.value)}
+                              onChange={e => inlineEdit.setEditValue(e.target.value)}
                               onKeyDown={async e => {
                                 if (e.key === 'Enter') {
-                                  await saveInlineEdit(step.id, 'title', inlineEditValue);
+                                  await inlineEdit.save();
                                 } else if (e.key === 'Escape') {
-                                  cancelInlineEdit();
+                                  inlineEdit.cancel();
                                 }
                               }}
                               onBlur={() => {
-                                if (inlineEditValue.trim() && inlineEditValue.trim() !== step.title) {
-                                  saveInlineEdit(step.id, 'title', inlineEditValue);
+                                if (inlineEdit.editValue.trim() && inlineEdit.editValue.trim() !== step.title) {
+                                  inlineEdit.save();
                                 } else {
-                                  cancelInlineEdit();
+                                  inlineEdit.cancel();
                                 }
                               }}
                             />
@@ -427,9 +415,7 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                               title="Double-click to edit"
                               onDoubleClick={e => {
                                 e.stopPropagation();
-                                setInlineEditId(step.id);
-                                setInlineEditField('title');
-                                setInlineEditValue(step.title);
+                                inlineEdit.start(step.id, 'title', step.title);
                               }}
                             >{step.title}</span>
                           )}

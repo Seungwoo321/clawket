@@ -180,7 +180,8 @@ export default function BacklogView({ projectId, onSelectStep }: BacklogViewProp
         {activeBolts.map((bolt) => {
           const steps = boltSteps[bolt.id] || [];
           const collapsed = collapsedBolts.has(bolt.id);
-          const doneCount = steps.filter(s => s.status === 'done').length;
+          const CLOSED = new Set(['done', 'cancelled', 'superseded']);
+          const doneCount = steps.filter(s => CLOSED.has(s.status)).length;
 
           return (
             <DroppableSection key={bolt.id} id={bolt.id}>

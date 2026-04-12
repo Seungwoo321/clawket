@@ -115,8 +115,9 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
   }
 
   // Step stats
+  const CLOSED = new Set(['done', 'cancelled', 'superseded']);
   const stepsByStatus = {
-    done: steps.filter(s => s.status === 'done').length,
+    done: steps.filter(s => CLOSED.has(s.status)).length,
     in_progress: steps.filter(s => s.status === 'in_progress').length,
     todo: steps.filter(s => s.status === 'todo').length,
     blocked: steps.filter(s => s.status === 'blocked').length,
@@ -159,8 +160,8 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
           todo={stepsByStatus.todo}
           blocked={stepsByStatus.blocked}
         />
-        <div className="flex gap-4 text-xs text-muted">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success inline-block" /> Done {stepsByStatus.done}</span>
+        <div className="flex gap-4 text-xs text-muted flex-wrap">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success inline-block" /> Closed {stepsByStatus.done}</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning inline-block" /> Active {stepsByStatus.in_progress}</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-surface-high inline-block" /> Todo {stepsByStatus.todo}</span>
           {stepsByStatus.blocked > 0 && (
@@ -172,7 +173,7 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Total Steps" value={totalSteps} color="text-foreground" />
-        <StatCard label="Completed" value={stepsByStatus.done} color="text-success" />
+        <StatCard label="Closed" value={stepsByStatus.done} color="text-success" />
         <StatCard label="In Progress" value={stepsByStatus.in_progress} color="text-warning" />
         <StatCard label="Blocked" value={stepsByStatus.blocked} color="text-danger" />
       </div>
@@ -223,13 +224,17 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
         <div className="space-y-2">
           {phases.map(phase => {
             const phaseSteps = steps.filter(s => s.phase_id === phase.id);
-            const pDone = phaseSteps.filter(s => s.status === 'done').length;
+            const CLOSED = new Set(['done', 'cancelled', 'superseded']);
+            const pDone = phaseSteps.filter(s => CLOSED.has(s.status)).length;
+            const pDeferred = phaseSteps.filter(s => s.status === 'deferred').length;
             const pTotal = phaseSteps.length;
             return (
               <div key={phase.id} className="flex items-center gap-3">
                 <StatusBadge status={phase.status} />
                 <span className="text-sm text-foreground flex-1 truncate">{phase.title}</span>
-                <span className="text-xs text-muted whitespace-nowrap">{pDone}/{pTotal}</span>
+                <span className="text-xs text-muted whitespace-nowrap">
+                  {pDone}/{pTotal}{pDeferred > 0 ? ` (${pDeferred} deferred)` : ''}
+                </span>
                 <div className="w-24 h-1.5 rounded-full bg-surface-high overflow-hidden">
                   {pTotal > 0 && (
                     <div className="h-full bg-success rounded-full" style={{ width: `${(pDone / pTotal) * 100}%` }} />
