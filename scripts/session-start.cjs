@@ -113,7 +113,7 @@ function buildSummary(context) {
   return lines.join('\n');
 }
 
-// Load rules from plugin prompts directory
+// Load rules (static, injected once at SessionStart)
 let rules = '';
 try {
   rules = readFileSync(resolve(pluginRoot, 'prompts', 'rules.md'), 'utf-8').trim();
@@ -127,18 +127,33 @@ const cwd = process.env.HOOK_CWD || process.cwd();
 const context = exec(`${LATTICE} dashboard --cwd "${cwd}" --show all`);
 
 if (!context) {
+  const noProjectMsg = `Lattice: No project registered for this directory.\nRun: lattice project new "<name>" --cwd "${cwd}"`;
   console.log(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: rules || '' }
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: noProjectMsg + (rules ? '\n\n' + rules : '') },
+    systemMessage: `${C.cyan}Lattice${C.reset} ${C.dim}active${C.reset} ${C.yellow}— no project for this directory${C.reset}`
   }));
   process.exit(0);
 }
 
 const summary = buildSummary(context);
 
+// Daemon status + web port
+const daemonStatus = exec(`${LATTICE} daemon status`);
+const portFile = require('path').join(require('os').homedir(), '.cache', 'lattice', 'latticed.port');
+let webUrl = '';
+try {
+  const port = readFileSync(portFile, 'utf-8').trim();
+  webUrl = `http://localhost:${port}`;
+} catch {}
+
+const statusLine = webUrl
+  ? `${C.dim}Daemon: ${C.reset}${C.green}running${C.reset} ${C.dim}Web: ${C.reset}${C.cyan}${webUrl}${C.reset}`
+  : `${C.dim}Daemon: ${C.reset}${C.green}running${C.reset}`;
+
 console.log(JSON.stringify({
   hookSpecificOutput: {
     hookEventName: 'SessionStart',
     additionalContext: context + (rules ? '\n\n' + rules : '')
   },
-  systemMessage: summary
+  systemMessage: summary + '\n' + statusLine
 }));
