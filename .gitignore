@@ -1,5 +1,3 @@
 .DS_Store
 node_modules/
-bin/lattice
-bin/latticed
 *.log
