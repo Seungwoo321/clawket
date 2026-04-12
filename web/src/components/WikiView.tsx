@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { Artifact, ArtifactVersion, Plan } from '../types';
 import api from '../api';
 import type { WikiFile } from '../api';
@@ -13,7 +14,39 @@ interface FileEntry {
   type: 'file';
   path: string;
   name: string;
+  title?: string;
   modified_at: number;
+}
+
+interface FileTreeNode {
+  name: string;
+  path?: string;
+  title?: string;
+  children: FileTreeNode[];
+}
+
+function buildFileTree(files: FileEntry[]): FileTreeNode[] {
+  const root: FileTreeNode = { name: '', children: [] };
+
+  for (const f of files) {
+    const parts = f.path.split('/');
+    let current = root;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (i === parts.length - 1) {
+        current.children.push({ name: part, path: f.path, title: f.title || f.name, children: [] });
+      } else {
+        let folder = current.children.find(c => c.name === part && !c.path);
+        if (!folder) {
+          folder = { name: part, children: [] };
+          current.children.push(folder);
+        }
+        current = folder;
+      }
+    }
+  }
+
+  return root.children;
 }
 
 interface ArtifactNode extends Artifact {
@@ -44,11 +77,13 @@ function TreeItem({
   node,
   selectedId,
   onSelect,
+  onAddChild,
   depth = 0,
 }: {
   node: ArtifactNode;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onAddChild?: (parentId: string) => void;
   depth?: number;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -56,14 +91,14 @@ function TreeItem({
 
   return (
     <div>
-      <button
-        onClick={() => onSelect(node.id)}
-        className={`w-full text-left py-1.5 px-2 rounded-md text-sm transition-colors flex items-center gap-1.5 cursor-pointer ${
+      <div
+        className={`group flex items-center gap-1 py-1.5 px-2 rounded-md text-sm transition-colors cursor-pointer ${
           selectedId === node.id
             ? 'bg-primary/15 text-primary'
             : 'text-foreground hover:bg-surface-hover'
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        onClick={() => onSelect(node.id)}
       >
         {hasChildren && (
           <span
@@ -77,8 +112,15 @@ function TreeItem({
         <span className="text-xs text-muted mr-1">
           {node.content_format === 'markdown' ? '\u2263' : node.content_format === 'json' ? '{}' : '\u2261'}
         </span>
-        <span className="truncate">{node.title}</span>
-      </button>
+        <span className="truncate flex-1">{node.title}</span>
+        {onAddChild && (
+          <span
+            onClick={(e) => { e.stopPropagation(); onAddChild(node.id); }}
+            className="text-xs text-muted hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer px-1"
+            title="Add child document"
+          >+</span>
+        )}
+      </div>
       {expanded && hasChildren && (
         <div>
           {node.children.map(child => (
@@ -87,10 +129,80 @@ function TreeItem({
               node={child}
               selectedId={selectedId}
               onSelect={onSelect}
+              onAddChild={onAddChild}
               depth={depth + 1}
             />
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function FileTreeView({
+  nodes,
+  selectedFile,
+  onSelect,
+  depth = 0,
+}: {
+  nodes: FileTreeNode[];
+  selectedFile: string | null;
+  onSelect: (path: string) => void;
+  depth?: number;
+}) {
+  return (
+    <>
+      {nodes.map((node) => {
+        const isFolder = !node.path && node.children.length > 0;
+        if (isFolder) {
+          return (
+            <FileFolder key={node.name} node={node} selectedFile={selectedFile} onSelect={onSelect} depth={depth} />
+          );
+        }
+        return (
+          <button
+            key={node.path}
+            onClick={() => node.path && onSelect(node.path)}
+            className={`w-full text-left py-1 px-2 rounded-md text-sm transition-colors flex items-center gap-1 cursor-pointer ${
+              selectedFile === node.path ? 'bg-primary/15 text-primary' : 'text-foreground hover:bg-surface-hover'
+            }`}
+            style={{ paddingLeft: `${depth * 12 + 8}px` }}
+          >
+            <span className="text-xs text-muted">{'\u2261'}</span>
+            <span className="truncate text-xs">{node.title || node.name}</span>
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+function FileFolder({
+  node,
+  selectedFile,
+  onSelect,
+  depth,
+}: {
+  node: FileTreeNode;
+  selectedFile: string | null;
+  onSelect: (path: string) => void;
+  depth: number;
+}) {
+  const [expanded, setExpanded] = useState(depth < 1);
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full text-left py-1 px-2 rounded-md text-xs text-muted hover:text-foreground transition-colors flex items-center gap-1 cursor-pointer"
+        style={{ paddingLeft: `${depth * 12 + 8}px` }}
+      >
+        <span className="w-3 text-center">{expanded ? '\u25BE' : '\u25B8'}</span>
+        <span className="font-medium">{node.name}/</span>
+        <span className="text-[10px]">({node.children.length})</span>
+      </button>
+      {expanded && (
+        <FileTreeView nodes={node.children} selectedFile={selectedFile} onSelect={onSelect} depth={depth + 1} />
       )}
     </div>
   );
@@ -107,7 +219,7 @@ function ContentRenderer({ content, format }: { content: string; format: string 
 
   return (
     <div className="prose prose-sm max-w-none">
-      <Markdown>{content}</Markdown>
+      <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
     </div>
   );
 }
@@ -169,6 +281,7 @@ export default function WikiView({ projectId }: WikiViewProps) {
   const [projectCwd, setProjectCwd] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [createParentId, setCreateParentId] = useState<string | null>(null);
   const [showVersions, setShowVersions] = useState(false);
 
   // Create form state
@@ -189,11 +302,22 @@ export default function WikiView({ projectId }: WikiViewProps) {
       const cwd = project?.cwds?.[0] || null;
       setProjectCwd(cwd);
 
-      // Load artifacts for all plans
-      const results = await Promise.all(
-        planList.map(p => api.listArtifacts({ plan_id: p.id }))
+      // Load artifacts for all plans + phases
+      const phaseResults = await Promise.all(
+        planList.map(p => api.listPhases({ plan_id: p.id }))
       );
-      setArtifacts(results.flat());
+      const allPhases = phaseResults.flat();
+      const artifactResults = await Promise.all([
+        ...planList.map(p => api.listArtifacts({ plan_id: p.id })),
+        ...allPhases.map(ph => api.listArtifacts({ phase_id: ph.id })),
+      ]);
+      // Deduplicate by id
+      const seen = new Set<string>();
+      const all: Artifact[] = [];
+      for (const a of artifactResults.flat()) {
+        if (!seen.has(a.id)) { seen.add(a.id); all.push(a); }
+      }
+      setArtifacts(all);
 
       // Load project files
       if (cwd) {
@@ -225,8 +349,10 @@ export default function WikiView({ projectId }: WikiViewProps) {
         title: newTitle.trim(),
         content: newContent,
         content_format: newFormat,
+        parent_id: createParentId || undefined,
       });
       setShowCreate(false);
+      setCreateParentId(null);
       setNewTitle('');
       setNewContent('');
       await loadArtifacts();
@@ -296,28 +422,22 @@ export default function WikiView({ projectId }: WikiViewProps) {
                   node={node}
                   selectedId={selectedId}
                   onSelect={handleSelectArtifact}
+                  onAddChild={(parentId) => { setCreateParentId(parentId); setShowCreate(true); }}
                 />
               ))}
             </div>
           )}
-          {/* Project files section */}
+          {/* Project files section (tree) */}
           {files.length > 0 && (
             <div>
-              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted font-medium">Project Files</div>
-              {files.map(f => (
-                <button
-                  key={f.path}
-                  onClick={() => handleSelectFile(f.path)}
-                  className={`w-full text-left py-1.5 px-2 rounded-md text-sm transition-colors flex items-center gap-1.5 cursor-pointer ${
-                    selectedFile === f.path
-                      ? 'bg-primary/15 text-primary'
-                      : 'text-foreground hover:bg-surface-hover'
-                  }`}
-                >
-                  <span className="text-xs text-muted">{'\u2263'}</span>
-                  <span className="truncate">{f.path}</span>
-                </button>
-              ))}
+              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted font-medium">
+                Project Files ({files.length})
+              </div>
+              <FileTreeView
+                nodes={buildFileTree(files)}
+                selectedFile={selectedFile}
+                onSelect={handleSelectFile}
+              />
             </div>
           )}
           {tree.length === 0 && files.length === 0 && (

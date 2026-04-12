@@ -96,6 +96,7 @@ export interface Artifact {
   title: string;
   content: string;
   content_format: string;
+  scope: 'rag' | 'reference' | 'archive';
   created_at: number;
 }
 

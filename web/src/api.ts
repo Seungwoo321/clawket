@@ -354,8 +354,17 @@ export function createArtifact(data: {
   title: string;
   content: string;
   content_format: string;
+  parent_id?: string;
+  scope?: string;
 }): Promise<Artifact> {
   return post('/artifacts', data);
+}
+
+export function updateArtifact(
+  id: string,
+  data: { title?: string; content?: string; content_format?: string; created_by?: string },
+): Promise<Artifact> {
+  return patch(`/artifacts/${encodeURIComponent(id)}`, data);
 }
 
 export function deleteArtifact(id: string): Promise<void> {
@@ -369,6 +378,7 @@ export function deleteArtifact(id: string): Promise<void> {
 export function listRuns(params?: {
   step_id?: string;
   session_id?: string;
+  project_id?: string;
 }): Promise<Run[]> {
   return get(`/runs${qs(params)}`);
 }
@@ -505,6 +515,7 @@ const api = {
   listArtifacts,
   getArtifact,
   createArtifact,
+  updateArtifact,
   deleteArtifact,
   listRuns,
   getRun,

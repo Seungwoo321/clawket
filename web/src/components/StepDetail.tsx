@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { Step, Artifact, Run, Question, StepComment, Bolt } from '../types';
 import api from '../api';
 import { Label, Input, Select, Button } from './ui';
@@ -282,7 +283,7 @@ export default function StepDetail({ stepId, projectId, onClose }: StepDetailPro
           <Label>Body</Label>
           <div className="bg-background border border-border rounded p-3 text-sm leading-relaxed max-h-80 overflow-y-auto prose prose-sm max-w-none">
             {step.body ? (
-              <Markdown>{step.body}</Markdown>
+              <Markdown remarkPlugins={[remarkGfm]}>{step.body}</Markdown>
             ) : (
               <span className="text-muted italic">No content</span>
             )}
