@@ -85,6 +85,10 @@ export function startServer() {
     const { cwd } = await c.req.json();
     return c.json(projects.addCwd(c.req.param('id'), cwd));
   });
+  app.delete('/projects/:id/cwds', async (c) => {
+    const { cwd } = await c.req.json();
+    return c.json(projects.removeCwd(c.req.param('id'), cwd));
+  });
   app.get('/projects/by-cwd/:cwd{.+}', (c) => {
     const cwd = decodeURIComponent(c.req.param('cwd'));
     const p = projects.getByCwd(cwd);

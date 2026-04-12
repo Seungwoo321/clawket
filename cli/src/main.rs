@@ -118,6 +118,11 @@ enum ProjectAction {
         #[arg(long)]
         cwd: Option<String>,
     },
+    RemoveCwd {
+        id: String,
+        #[arg(long)]
+        cwd: String,
+    },
 }
 
 // ========== Plan ==========
@@ -617,6 +622,9 @@ async fn main() -> Result<()> {
             ProjectAction::AddCwd { id, cwd } => {
                 let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap().to_string_lossy().to_string());
                 output(&client::request(&c, "POST", &format!("/projects/{id}/cwds"), Some(json!({"cwd": cwd}))).await?);
+            }
+            ProjectAction::RemoveCwd { id, cwd } => {
+                output(&client::request(&c, "DELETE", &format!("/projects/{id}/cwds"), Some(json!({"cwd": cwd}))).await?);
             }
         },
 

@@ -58,6 +58,11 @@ export const projects = {
     db.prepare(`INSERT OR IGNORE INTO project_cwds (project_id, cwd) VALUES (?, ?)`).run(id, cwd);
     return projects.get(id);
   },
+  removeCwd(id, cwd) {
+    const db = getDb();
+    db.prepare(`DELETE FROM project_cwds WHERE project_id = ? AND cwd = ?`).run(id, cwd);
+    return projects.get(id);
+  },
   update(id, fields) {
     const db = getDb();
     const allowed = ['name', 'description', 'key'];
