@@ -123,11 +123,12 @@ function VersionHistory({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
     api.fetchArtifactVersions(artifactId)
-      .then(setVersions)
+      .then(data => { if (!cancelled) setVersions(data); })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [artifactId]);
 
   if (loading) return <div className="text-xs text-muted py-2">Loading versions...</div>;
