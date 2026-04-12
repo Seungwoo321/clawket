@@ -48,12 +48,15 @@ const toolInput = hookInput.tool_input || {};
 // Read-only tools — always allow
 const READ_ONLY = new Set([
   'Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch',
-  'TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop',
+  'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop',
   'ToolSearch', 'Skill', 'ScheduleWakeup',
   'mcp__playwright__browser_snapshot', 'mcp__playwright__browser_take_screenshot',
   'mcp__playwright__browser_navigate', 'mcp__playwright__browser_click',
   'mcp__playwright__browser_console_messages', 'mcp__playwright__browser_resize',
 ]);
+
+// Task tools that create/modify — require Lattice step like other mutating tools
+const TASK_TOOLS = new Set(['TaskCreate', 'TaskUpdate']);
 
 if (READ_ONLY.has(toolName)) allow();
 
@@ -63,8 +66,8 @@ const AGENT_TOOLS = new Set(['Agent', 'TeamCreate', 'SendMessage']);
 // Mutating tools
 const MUTATING_TOOLS = new Set(['Edit', 'Write', 'Bash', 'NotebookEdit']);
 
-// If tool is neither agent nor mutating, allow
-if (!AGENT_TOOLS.has(toolName) && !MUTATING_TOOLS.has(toolName)) allow();
+// If tool is neither agent, mutating, nor task-creating, allow
+if (!AGENT_TOOLS.has(toolName) && !MUTATING_TOOLS.has(toolName) && !TASK_TOOLS.has(toolName)) allow();
 
 // Bash: allow lattice CLI commands (can't register steps otherwise!)
 if (toolName === 'Bash') {
@@ -73,24 +76,28 @@ if (toolName === 'Bash') {
 }
 
 const cwd = hookInput.cwd || process.env.HOOK_CWD || process.cwd();
-const context = exec(`${LATTICE} dashboard --cwd "${cwd}" --show active`);
 
+// Check if this is a lattice-managed project
+const context = exec(`${LATTICE} dashboard --cwd "${cwd}" --show active`);
 if (!context) {
   // No lattice project — allow (not lattice-managed)
   allow();
 }
 
-const inProgressCount = (context.match(/^\s*\[>\]/gm) || []).length;
+// Directly query in_progress steps instead of parsing dashboard output
+const stepsJson = exec(`${LATTICE} step list --status in_progress`);
+let inProgressSteps = [];
+try { inProgressSteps = JSON.parse(stepsJson || '[]'); } catch { inProgressSteps = []; }
 
 // Block all mutating work if no active steps
-if (inProgressCount === 0) {
+if (inProgressSteps.length === 0) {
   deny('Lattice: 활성 스텝이 없습니다. 작업 전 `lattice step new` 또는 `lattice step update <ID> --status in_progress`를 실행하세요.');
 }
 
 // For agent tools, also check assignee match
 if (AGENT_TOOLS.has(toolName)) {
   const agentName = toolInput.name || '';
-  if (agentName && !context.includes(`@${agentName}`)) {
+  if (agentName && !inProgressSteps.some(s => s.assignee === agentName)) {
     deny(`Lattice: "${agentName}"에 대한 활성 스텝이 없습니다. \`lattice step new --assignee ${agentName}\`으로 먼저 등록하세요.`);
   }
 }
