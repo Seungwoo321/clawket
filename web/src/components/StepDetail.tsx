@@ -2,66 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import Markdown from 'react-markdown';
 import type { Step, Artifact, Run, Question, StepComment, Bolt } from '../types';
 import api from '../api';
-import StatusBadge from './StatusBadge';
-import { Label, Input, Textarea, Select, Button } from './ui';
-
-const STEP_STATUS_ICON: Record<Step['status'], { icon: string; color: string }> = {
-  todo: { icon: '\u25CB', color: 'text-muted' },
-  in_progress: { icon: '\u25D0', color: 'text-warning' },
-  review: { icon: '\u25D2', color: 'text-primary' },
-  done: { icon: '\u25CF', color: 'text-success' },
-  blocked: { icon: '\u2298', color: 'text-danger' },
-  cancelled: { icon: '\u2715', color: 'text-muted' },
-  superseded: { icon: '\u2715', color: 'text-muted' },
-  deferred: { icon: '\u223C', color: 'text-muted' },
-};
-
-function SubStepTree({ steps, depth = 0 }: { steps: Step[]; depth?: number }) {
-  const [childMap, setChildMap] = useState<Record<string, Step[]>>({});
-
-  useEffect(() => {
-    if (depth >= 3) return;
-    const ids = steps.map((s) => s.id);
-    Promise.all(ids.map((id) => api.listChildSteps(id).catch(() => [] as Step[]))).then(
-      (results) => {
-        const map: Record<string, Step[]> = {};
-        ids.forEach((id, i) => {
-          if (results[i].length > 0) map[id] = results[i];
-        });
-        setChildMap(map);
-      },
-    );
-  }, [steps, depth]);
-
-  return (
-    <>
-      {steps.map((child) => {
-        const si = STEP_STATUS_ICON[child.status];
-        return (
-          <div key={child.id}>
-            <div
-              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-background/60 transition-colors"
-              style={{ paddingLeft: `${depth * 20 + 8}px` }}
-            >
-              <span className={`text-sm ${si.color}`}>{si.icon}</span>
-              {child.ticket_number && (
-                <span className="text-xs font-mono text-muted shrink-0">{child.ticket_number}</span>
-              )}
-              <span className="text-sm text-foreground truncate flex-1">{child.title}</span>
-              {child.assignee && (
-                <span className="text-xs text-muted shrink-0">{child.assignee}</span>
-              )}
-              <StatusBadge status={child.status} size="sm" />
-            </div>
-            {childMap[child.id] && (
-              <SubStepTree steps={childMap[child.id]} depth={depth + 1} />
-            )}
-          </div>
-        );
-      })}
-    </>
-  );
-}
+import { Label, Input, Select, Button } from './ui';
+import { StepComments } from './step-detail/StepComments';
+import { StepSubSteps } from './step-detail/StepSubSteps';
+import { ArtifactsSection, RunsSection, QuestionsSection } from './step-detail/StepSections';
 
 const PRIORITY_COLORS: Record<Step['priority'], string> = {
   critical: 'bg-danger/20 text-danger',
@@ -90,14 +34,7 @@ export default function StepDetail({ stepId, projectId, onClose }: StepDetailPro
   const [editingAssignee, setEditingAssignee] = useState(false);
   const [assigneeDraft, setAssigneeDraft] = useState('');
   const [comments, setComments] = useState<StepComment[]>([]);
-  const [commentAuthor, setCommentAuthor] = useState('');
-  const [commentBody, setCommentBody] = useState('');
-  const [submittingComment, setSubmittingComment] = useState(false);
   const [childSteps, setChildSteps] = useState<Step[]>([]);
-  const [showChildForm, setShowChildForm] = useState(false);
-  const [childTitleDraft, setChildTitleDraft] = useState('');
-  const [childAssigneeDraft, setChildAssigneeDraft] = useState('');
-  const [creatingChild, setCreatingChild] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -172,29 +109,6 @@ export default function StepDetail({ stepId, projectId, onClose }: StepDetailPro
     }
   }
 
-  async function handleAddComment() {
-    if (!step || !commentAuthor.trim() || !commentBody.trim()) return;
-    setSubmittingComment(true);
-    try {
-      const newComment = await api.createStepComment(step.id, commentAuthor.trim(), commentBody.trim());
-      setComments((prev) => [...prev, newComment]);
-      setCommentBody('');
-    } catch (err) {
-      console.error('Failed to add comment:', err);
-    } finally {
-      setSubmittingComment(false);
-    }
-  }
-
-  async function handleDeleteComment(commentId: string) {
-    try {
-      await api.deleteStepComment(commentId);
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
-    } catch (err) {
-      console.error('Failed to delete comment:', err);
-    }
-  }
-
   async function handleDeleteStep() {
     if (!window.confirm('Are you sure you want to delete this step?')) return;
     try {
@@ -202,31 +116,6 @@ export default function StepDetail({ stepId, projectId, onClose }: StepDetailPro
       onClose();
     } catch (err) {
       console.error('Failed to delete step:', err);
-    }
-  }
-
-  async function handleCreateChildStep() {
-    if (!step || !childTitleDraft.trim()) return;
-    setCreatingChild(true);
-    try {
-      const maxIdx = childSteps.reduce((max, s) => Math.max(max, s.idx), 0);
-      await api.createStep({
-        phase_id: step.phase_id,
-        idx: maxIdx + 1,
-        title: childTitleDraft.trim(),
-        body: '',
-        assignee: childAssigneeDraft.trim() || undefined,
-        parent_step_id: step.id,
-      });
-      const updated = await api.listChildSteps(step.id);
-      setChildSteps(updated);
-      setChildTitleDraft('');
-      setChildAssigneeDraft('');
-      setShowChildForm(false);
-    } catch (err) {
-      console.error('Failed to create child step:', err);
-    } finally {
-      setCreatingChild(false);
     }
   }
 
@@ -400,195 +289,11 @@ export default function StepDetail({ stepId, projectId, onClose }: StepDetailPro
           </div>
         </div>
 
-        {/* Sub-Steps */}
-        <div>
-          <Label>Sub-Steps ({childSteps.length})</Label>
-          {childSteps.length === 0 && !showChildForm ? (
-            <div className="text-sm text-muted italic">No sub-steps</div>
-          ) : (
-            <div className="bg-background border border-border rounded overflow-hidden divide-y divide-border">
-              <SubStepTree steps={childSteps} />
-            </div>
-          )}
-          {showChildForm ? (
-            <div className="mt-2 bg-background border border-border rounded p-3 space-y-2">
-              <Input
-                value={childTitleDraft}
-                onChange={(e) => setChildTitleDraft(e.target.value)}
-                placeholder="Sub-step title"
-                size="sm"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCreateChildStep();
-                  if (e.key === 'Escape') setShowChildForm(false);
-                }}
-              />
-              <Input
-                value={childAssigneeDraft}
-                onChange={(e) => setChildAssigneeDraft(e.target.value)}
-                placeholder="Assignee (optional)"
-                size="sm"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCreateChildStep();
-                  if (e.key === 'Escape') setShowChildForm(false);
-                }}
-              />
-              <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" onClick={() => setShowChildForm(false)}>Cancel</Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleCreateChildStep}
-                  disabled={creatingChild || !childTitleDraft.trim()}
-                >
-                  {creatingChild ? 'Creating...' : 'Create'}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <button
-              className="mt-2 flex items-center gap-1 text-xs text-muted hover:text-primary transition-colors"
-              onClick={() => setShowChildForm(true)}
-            >
-              <span className="text-base leading-none">+</span> Add sub-step
-            </button>
-          )}
-        </div>
-
-        {/* Artifacts */}
-        <div>
-          <Label>Artifacts ({artifacts.length})</Label>
-          {artifacts.length === 0 ? (
-            <div className="text-sm text-muted italic">No artifacts</div>
-          ) : (
-            <div className="space-y-1.5">
-              {artifacts.map((a) => (
-                <div key={a.id} className="flex items-center gap-2 bg-background border border-border rounded px-3 py-2">
-                  <span className="text-xs font-mono bg-secondary/20 text-secondary px-1.5 py-0.5 rounded">{a.type}</span>
-                  <span className="text-sm text-foreground truncate flex-1">{a.title}</span>
-                  <span className="text-xs text-muted">{a.content_format}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Runs */}
-        <div>
-          <Label>Runs ({runs.length})</Label>
-          {runs.length === 0 ? (
-            <div className="text-sm text-muted italic">No runs</div>
-          ) : (
-            <div className="border border-border rounded overflow-hidden">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-background text-muted">
-                    <th className="text-left px-2 py-1.5 font-medium">Agent</th>
-                    <th className="text-left px-2 py-1.5 font-medium">Started</th>
-                    <th className="text-left px-2 py-1.5 font-medium">Ended</th>
-                    <th className="text-left px-2 py-1.5 font-medium">Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {runs.map((r) => (
-                    <tr key={r.id} className="border-t border-border">
-                      <td className="px-2 py-1.5 text-foreground">{r.agent}</td>
-                      <td className="px-2 py-1.5 text-muted">{formatTime(r.started_at)}</td>
-                      <td className="px-2 py-1.5 text-muted">{formatTime(r.ended_at)}</td>
-                      <td className="px-2 py-1.5">
-                        {r.result ? (
-                          <StatusBadge status={r.result} size="sm" />
-                        ) : (
-                          <span className="text-warning">running</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Questions */}
-        <div>
-          <Label>Questions ({questions.length})</Label>
-          {questions.length === 0 ? (
-            <div className="text-sm text-muted italic">No questions</div>
-          ) : (
-            <div className="space-y-2">
-              {questions.map((q) => (
-                <div key={q.id} className="bg-background border border-border rounded p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono bg-primary/20 text-primary px-1.5 py-0.5 rounded">{q.kind}</span>
-                    <span className="text-xs text-muted">by {q.asked_by}</span>
-                  </div>
-                  <div className="text-sm text-foreground">{q.body}</div>
-                  {q.answer && (
-                    <div className="mt-2 pl-3 border-l-2 border-success">
-                      <div className="text-xs text-muted mb-0.5">Answer by {q.answered_by}</div>
-                      <div className="text-sm text-foreground">{q.answer}</div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Comments */}
-        <div>
-          <Label>Comments ({comments.length})</Label>
-          {comments.length > 0 && (
-            <div className="space-y-2 mb-3">
-              {comments.map((c) => (
-                <div key={c.id} className="bg-background border border-border rounded p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-foreground">{c.author}</span>
-                      <span className="text-xs text-muted">{formatTime(c.created_at)}</span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteComment(c.id)}
-                      title="Delete comment"
-                    >
-                      &times;
-                    </Button>
-                  </div>
-                  <div className="text-sm text-foreground">{c.body}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          {/* New comment form */}
-          <div className="bg-background border border-border rounded p-3 space-y-2">
-            <Input
-              value={commentAuthor}
-              onChange={(e) => setCommentAuthor(e.target.value)}
-              placeholder="Author"
-              size="sm"
-            />
-            <Textarea
-              value={commentBody}
-              onChange={(e) => setCommentBody(e.target.value)}
-              placeholder="Write a comment..."
-              rows={3}
-              size="sm"
-            />
-            <div className="flex justify-end">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleAddComment}
-                disabled={submittingComment || !commentAuthor.trim() || !commentBody.trim()}
-              >
-                {submittingComment ? 'Posting...' : 'Add Comment'}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <StepSubSteps step={step} childSteps={childSteps} onChildCreated={(child) => setChildSteps(prev => [...prev, child])} />
+        <ArtifactsSection artifacts={artifacts} />
+        <RunsSection runs={runs} />
+        <QuestionsSection questions={questions} />
+        <StepComments stepId={stepId} comments={comments} onCommentsChange={setComments} />
       </div>
     </div>
   );
