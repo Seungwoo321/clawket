@@ -4,7 +4,8 @@ const { execSync } = require('child_process');
 const { readFileSync } = require('fs');
 const { resolve, dirname } = require('path');
 
-const LATTICE = process.env.LATTICE_BIN || 'lattice';
+const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || resolve(dirname(__filename), '..');
+const LATTICE = process.env.LATTICE_BIN || resolve(pluginRoot, 'bin', 'lattice');
 
 const C = {
   reset: '\x1b[0m',

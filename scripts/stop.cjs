@@ -2,8 +2,10 @@
 // Lattice Stop hook: finalize active runs on session end.
 // No LLM calls — structured state recording only.
 const { execSync } = require('child_process');
+const { resolve, dirname } = require('path');
 
-const LATTICE = process.env.LATTICE_BIN || 'lattice';
+const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || resolve(dirname(__filename), '..');
+const LATTICE = process.env.LATTICE_BIN || resolve(pluginRoot, 'bin', 'lattice');
 const sessionId = process.env.CLAUDE_SESSION_ID || '';
 
 if (!sessionId) process.exit(0);

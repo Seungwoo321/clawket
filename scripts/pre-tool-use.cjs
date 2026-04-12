@@ -4,8 +4,10 @@
 // - Edit/Write/Bash: block if no active steps at all
 // - Read-only tools: always allow
 const { execSync } = require('child_process');
+const { resolve, dirname } = require('path');
 
-const LATTICE = process.env.LATTICE_BIN || 'lattice';
+const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || resolve(dirname(__filename), '..');
+const LATTICE = process.env.LATTICE_BIN || resolve(pluginRoot, 'bin', 'lattice');
 
 function exec(cmd) {
   try { return execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim(); }

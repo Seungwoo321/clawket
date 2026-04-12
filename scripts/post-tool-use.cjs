@@ -2,8 +2,10 @@
 // Lattice PostToolUse hook: record file modifications to active run/step.
 // Only triggers on Edit and Write tools to avoid DB bloat.
 const { execSync } = require('child_process');
+const { resolve, dirname } = require('path');
 
-const LATTICE = process.env.LATTICE_BIN || 'lattice';
+const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || resolve(dirname(__filename), '..');
+const LATTICE = process.env.LATTICE_BIN || resolve(pluginRoot, 'bin', 'lattice');
 const toolName = process.env.HOOK_TOOL_NAME || '';
 const toolInput = process.env.HOOK_TOOL_INPUT || '';
 const sessionId = process.env.CLAUDE_SESSION_ID || '';
