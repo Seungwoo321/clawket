@@ -55,11 +55,16 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
   const [loading, setLoading] = useState(false);
   const [refreshCounter, setRefreshCounter] = useState(0);
 
-  // Edit mode state
+  // Edit mode state (bulk)
   const [editMode, setEditMode] = useState(false);
   const [selectedStepIds, setSelectedStepIds] = useState<Set<string>>(new Set());
   const [bolts, setBolts] = useState<Bolt[]>([]);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+
+  // Inline edit state
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
+  const [inlineEditField, setInlineEditField] = useState<'title' | 'status' | null>(null);
+  const [inlineEditValue, setInlineEditValue] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +146,23 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
       return next;
     });
   }
+
+  const saveInlineEdit = useCallback(async (stepId: string, field: 'title' | 'status', value: string) => {
+    if (!value.trim()) return;
+    try {
+      await api.updateStep(stepId, { [field]: value.trim() });
+      setInlineEditId(null);
+      setInlineEditField(null);
+      setRefreshCounter(c => c + 1);
+    } catch (err) {
+      console.error('Inline edit failed:', err);
+    }
+  }, []);
+
+  const cancelInlineEdit = useCallback(() => {
+    setInlineEditId(null);
+    setInlineEditField(null);
+  }, []);
 
   const allStepIds = plans.flatMap((p) => p.phases.flatMap((ph) => ph.steps.map((s) => s.id)));
 
@@ -318,13 +340,15 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                     phase.steps.map((step) => {
                       const si = stepStatusIcon[step.status];
                       const isSelected = selectedStepIds.has(step.id);
+                      const isInlineTitle = inlineEditId === step.id && inlineEditField === 'title';
+                      const isInlineStatus = inlineEditId === step.id && inlineEditField === 'status';
                       return (
                         <div
                           key={step.id}
                           onClick={() => {
                             if (editMode) {
                               toggleStepSelection(step.id);
-                            } else {
+                            } else if (!inlineEditId) {
                               onSelectItem({ type: 'step', id: step.id });
                             }
                           }}
@@ -341,12 +365,74 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                               className="shrink-0 w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
                             />
                           )}
-                          <span className={`${si.color} text-sm shrink-0`}>{si.icon}</span>
+                          {/* Status icon — double-click to change status */}
+                          {isInlineStatus ? (
+                            <select
+                              className="text-xs bg-background border border-primary rounded px-1 py-0.5 text-foreground focus:outline-none cursor-pointer shrink-0"
+                              value={inlineEditValue}
+                              autoFocus
+                              onClick={e => e.stopPropagation()}
+                              onChange={async e => {
+                                await saveInlineEdit(step.id, 'status', e.target.value);
+                              }}
+                              onBlur={cancelInlineEdit}
+                              onKeyDown={e => { if (e.key === 'Escape') cancelInlineEdit(); }}
+                            >
+                              {STEP_STATUSES.map(s => (
+                                <option key={s.value} value={s.value}>{s.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span
+                              className={`${si.color} text-sm shrink-0 cursor-pointer`}
+                              title={`${step.status} — double-click to change`}
+                              onDoubleClick={e => {
+                                e.stopPropagation();
+                                setInlineEditId(step.id);
+                                setInlineEditField('status');
+                                setInlineEditValue(step.status);
+                              }}
+                            >{si.icon}</span>
+                          )}
                           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${priorityDotColor[step.priority]}`} title={`Priority: ${step.priority}`} />
                           <span className="text-xs text-muted font-mono shrink-0" title={step.id}>
                             {step.ticket_number ?? `...${step.id.slice(-6)}`}
                           </span>
-                          <span className="text-sm text-foreground truncate flex-1">{step.title}</span>
+                          {/* Title — double-click to edit */}
+                          {isInlineTitle ? (
+                            <input
+                              className="text-sm text-foreground truncate flex-1 bg-background border border-primary rounded px-1 py-0.5 focus:outline-none"
+                              value={inlineEditValue}
+                              autoFocus
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setInlineEditValue(e.target.value)}
+                              onKeyDown={async e => {
+                                if (e.key === 'Enter') {
+                                  await saveInlineEdit(step.id, 'title', inlineEditValue);
+                                } else if (e.key === 'Escape') {
+                                  cancelInlineEdit();
+                                }
+                              }}
+                              onBlur={() => {
+                                if (inlineEditValue.trim() && inlineEditValue.trim() !== step.title) {
+                                  saveInlineEdit(step.id, 'title', inlineEditValue);
+                                } else {
+                                  cancelInlineEdit();
+                                }
+                              }}
+                            />
+                          ) : (
+                            <span
+                              className="text-sm text-foreground truncate flex-1"
+                              title="Double-click to edit"
+                              onDoubleClick={e => {
+                                e.stopPropagation();
+                                setInlineEditId(step.id);
+                                setInlineEditField('title');
+                                setInlineEditValue(step.title);
+                              }}
+                            >{step.title}</span>
+                          )}
                           {step.assignee && (
                             <span className="text-xs text-muted shrink-0 bg-border/50 px-1.5 py-0.5 rounded">
                               {step.assignee}
@@ -430,10 +516,6 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
               Deselect All
             </Button>
           )}
-
-          <Button variant="outline" size="sm" onClick={deselectAll} disabled={bulkUpdating}>
-            Deselect All
-          </Button>
         </div>
       )}
     </div>
