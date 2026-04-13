@@ -27,9 +27,14 @@ function exec(cmd) {
 function ensureDeps() {
   const daemonDir = resolve(pluginRoot, 'daemon');
   const nodeModules = resolve(daemonDir, 'node_modules');
-  const { existsSync } = require('fs');
+  const { existsSync, writeFileSync } = require('fs');
   if (existsSync(resolve(daemonDir, 'package.json')) && !existsSync(nodeModules)) {
     process.stderr.write(`[lattice] Installing daemon dependencies...\n`);
+    // Ensure .npmrc exists for flat node_modules (dotfiles may not be copied to plugin cache)
+    const npmrc = resolve(daemonDir, '.npmrc');
+    if (!existsSync(npmrc)) {
+      writeFileSync(npmrc, 'node-linker=hoisted\n');
+    }
     try {
       execSync('pnpm --version', { stdio: 'pipe' });
       execSync('pnpm install --prod', { cwd: daemonDir, stdio: ['pipe', 'pipe', process.stderr], timeout: 120000 });
