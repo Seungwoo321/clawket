@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 
 #[derive(Parser)]
-#[command(name = "lattice", about = "LLM-native work management CLI for Claude Code.\n\nWorkflow: Project → Plan (approve) → Phase → Bolt (activate) → Step\n\nPlan must be approved (draft → active) before steps can be started.\nBolt must be activated (planning → active) before steps can be started.\nPhase is a pure grouping entity with no status.\nStep is the only entity managed directly: todo → in_progress → done/cancelled.\nCompleted bolts cannot be restarted — create a new one.\n\nQuick start:\n  lattice project new \"my-app\" --cwd .\n  lattice plan new --project PROJ-my-app \"MVP\"\n  lattice plan approve PLAN-xxx\n  lattice phase new --plan PLAN-xxx \"Phase 1\"\n  lattice bolt new --project PROJ-my-app \"Sprint 1\"\n  lattice bolt activate BOLT-xxx\n  lattice step new \"Build login\" --assignee main\n  lattice step update STEP-xxx --status in_progress\n  lattice step update STEP-xxx --status done")]
+#[command(name = "lattice", about = "LLM-native work management CLI for Claude Code.\n\nWorkflow: Project → Plan (approve) → Phase → Step (backlog) → Bolt (activate) → Start\n\nPlan must be approved (draft → active) before steps can be started.\nSteps can be created without a bolt (goes to backlog).\nStarting a step (in_progress) requires an assigned active bolt.\nBolt must be activated (planning → active) before steps can be started.\nPhase is a pure grouping entity with no status.\nStep is the only entity managed directly: todo → in_progress → done/cancelled.\nCompleted bolts cannot be restarted — create a new one.\n\nQuick start:\n  lattice project new \"my-app\" --cwd .\n  lattice plan new --project PROJ-my-app \"MVP\"\n  lattice plan approve PLAN-xxx\n  lattice phase new --plan PLAN-xxx \"Phase 1\"\n  lattice step new \"Build login\" --assignee main          # goes to backlog\n  lattice bolt new --project PROJ-my-app \"Sprint 1\"\n  lattice bolt activate BOLT-xxx\n  lattice step update STEP-xxx --bolt BOLT-xxx             # assign to bolt\n  lattice step update STEP-xxx --status in_progress\n  lattice step update STEP-xxx --status done")]
 struct Cli {
     /// Output format: json (default), table, yaml
     #[arg(long, global = true, default_value = "json")]
@@ -344,7 +344,7 @@ enum StepAction {
         /// Estimated number of file edits
         #[arg(long)]
         estimated_edits: Option<i64>,
-        /// Bolt ID (auto-inferred from active bolt if omitted)
+        /// Bolt ID. Auto-inferred from active bolt if omitted. Steps without a bolt go to backlog.
         #[arg(long)]
         bolt: Option<String>,
         /// Step type: task, bug, feature, enhancement, refactor, docs, test, chore

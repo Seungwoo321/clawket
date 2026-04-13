@@ -311,9 +311,7 @@ export const steps = {
           }
         }
       }
-      if (!bolt_id) {
-        throw Object.assign(new Error('bolt_id is required. Create a bolt first: lattice bolt new "Sprint N" --project <PROJ-ID>'), { status: 400 });
-      }
+      // bolt_id is optional — steps without a bolt go to backlog
     }
     const db = getDb();
     const id = newId('STEP');
@@ -462,14 +460,17 @@ export const steps = {
             ), { status: 400 });
           }
         }
-        // Check bolt is active
-        if (updatedStep.bolt_id) {
-          const bolt = bolts.get(updatedStep.bolt_id);
-          if (bolt && bolt.status !== 'active') {
-            throw Object.assign(new Error(
-              `Cannot start step: bolt "${bolt.title}" is ${bolt.status}. Activate it first: lattice bolt activate ${bolt.id}`
-            ), { status: 400 });
-          }
+        // Check bolt is assigned and active
+        if (!updatedStep.bolt_id) {
+          throw Object.assign(new Error(
+            `Cannot start step: no bolt assigned. Assign to a bolt first: lattice step update ${id} --bolt <BOLT-ID>`
+          ), { status: 400 });
+        }
+        const bolt = bolts.get(updatedStep.bolt_id);
+        if (bolt && bolt.status !== 'active') {
+          throw Object.assign(new Error(
+            `Cannot start step: bolt "${bolt.title}" is ${bolt.status}. Activate it first: lattice bolt activate ${bolt.id}`
+          ), { status: 400 });
         }
       }
     }

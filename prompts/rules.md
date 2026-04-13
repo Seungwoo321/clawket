@@ -58,7 +58,8 @@ Project
 - Pure grouping. No state management needed.
 
 ### Step: Only entity managed directly
-- Starting a step (`in_progress`) requires: Plan is `active` AND Bolt is `active`
+- Steps can be created without a bolt (goes to backlog)
+- Starting a step (`in_progress`) requires: Plan is `active` AND Bolt is assigned and `active`
 - Both LLM (CLI) and human (web UI) can change step status
 
 ## Workflow

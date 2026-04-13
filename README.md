@@ -12,28 +12,15 @@ Lattice is a structured state layer that replaces Jira + Confluence for LLM-driv
 
 ## Features
 
-- **Structured Task Board** — Projects, Plans, Phases, Steps with full CRUD
+- **Structured Workflow** — Project → Plan (approve) → Phase → Step → Bolt (activate)
 - **Bolt Cycles** — Sprint-like iteration management (AIDLC bolt cycle support)
-- **Bolt Auto-Complete** — Bolts automatically completed when all steps are done
-- **Web Dashboard** — Summary, Plans, Board (Kanban), Backlog, Timeline, and Wiki views
-- **Agent Swimlane Timeline** — Horizontal bar chart per agent showing concurrent work over time
+- **Web Dashboard** — Summary, Plans, Board (Kanban), Backlog, Timeline, Wiki — 6 views
+- **Agent Swimlane Timeline** — Per-agent horizontal bar chart with concurrent work visualization
 - **Drag & Drop** — Kanban DnD for status changes, backlog DnD for bolt assignment
-- **Inline Editing** — Double-click step titles/status in Plans view to edit directly
-- **Project Settings** — Edit project name, description, and working directories from Summary view
-- **Wiki with File Tree** — Folder-based tree navigation, auto-extracted headings as titles
-- **Local RAG** — Artifact scope (rag/reference/archive), sqlite-vec embeddings, hybrid search
-- **Artifact Versioning** — Auto-snapshot on content update, version history with restore
-- **Vector Search** — FTS5 keyword + sqlite-vec semantic hybrid search
-- **Ticket Numbers** — Human-readable IDs (LAT-1, LAT-2) alongside internal ULIDs
-- **CLI Shortcuts** — `lattice s` (step), `lattice b` (bolt), `lattice d` (daemon), etc.
-- **Auto-Inference** — `step new` auto-detects phase and bolt from current project
-- **Hook Integration** — Auto-injects project context into every Claude Code session
-- **Step Enforcement** — Blocks work unless a step is registered (PreToolUse hook)
-- **Plan Mode Compatible** — Auto-imports plans on ExitPlanMode
-- **Auto Status Sync** — Stop hook auto-completes Phases/Plans/Bolts when all steps are done
-- **Token Optimization** — Done steps hidden, ticket numbers instead of ULIDs (-32% tokens)
-- **Fixed Port** — Daemon runs on port 19400 (configurable via LATTICE_PORT)
-- **Light/Dark Theme** — Theme toggle with persistent preference
+- **Wiki** — File tree navigation with configurable paths, artifact versioning, local RAG
+- **Hook Enforcement** — Blocks work without active step, injects project context per session
+- **Ticket Numbers** — Human-readable IDs (LAT-1, LAT-2) with token-optimized output
+- **CLI + Web** — Both LLM (CLI) and human (web UI) can manage all entities
 
 ## Installation
 
@@ -89,7 +76,7 @@ Access at `http://localhost:19400` when daemon is running. 6 views:
 
 | View | Description |
 |------|-------------|
-| **Summary** | Project overview with progress, active agents, phase status |
+| **Summary** | Project overview with progress, active agents, phase progress |
 | **Plans** | Tree view with inline editing, bulk actions, checkbox selection |
 | **Board** | Kanban board with drag-and-drop status changes |
 | **Backlog** | Bolt-grouped backlog with drag-and-drop assignment |
@@ -138,9 +125,12 @@ You: "Plan the authentication refactor"
 → You review and approve
 → Claude registers via CLI:
   lattice plan new --project PROJ-xxx "Auth Refactor"
+  lattice plan approve PLAN-xxx
   lattice phase new --plan PLAN-xxx "Phase 1 — OAuth Setup"
+  lattice step new "Implement OAuth flow" --assignee main   # goes to backlog
   lattice bolt new --project PROJ-xxx "Sprint 1"
-  lattice step new "Implement OAuth flow" --phase PHASE-xxx --bolt BOLT-xxx --assignee main
+  lattice bolt activate BOLT-xxx
+  lattice step update STEP-xxx --bolt BOLT-xxx              # assign to bolt
 ```
 
 **Plan mode (`/plan`):**
@@ -195,10 +185,11 @@ Open `http://localhost:19400` to see:
 | Concept | Description |
 |---------|-------------|
 | **Project** | A working directory registered with Lattice |
-| **Plan** | High-level intent (roadmap). Created via CLI, not Plan Mode files |
-| **Phase** | Epic-level grouping within a plan |
-| **Bolt** | Sprint — time-boxed iteration cycle |
-| **Step** | Atomic task unit. Must exist before any work can start |
+| **Plan** | High-level intent (roadmap). Must be approved before steps can start |
+| **Phase** | Pure grouping entity (no status). Organizes steps within a plan |
+| **Step** | Atomic task unit. Can be created without a bolt (goes to backlog) |
+| **Bolt** | Sprint — time-boxed iteration. Steps must be assigned to an active bolt to start |
+| **Backlog** | Steps without a bolt assignment. Drag to a bolt to schedule |
 
 ### Disabling Lattice for a project
 
@@ -211,11 +202,13 @@ When disabled:
 
 This is useful when you want to use Claude freely for exploration or quick fixes without registering steps.
 
-### Auto state transitions
+### State management
 
-- **Phase/Plan activate** automatically when a step becomes `in_progress`
-- **Phase/Plan complete** automatically when all steps reach terminal status (`done`, `cancelled`, `superseded`)
-- **Bolt** status is managed manually (`active` / `completed`)
+- **Plan**: `draft` → `active` (intentional approve) → `completed` (intentional end)
+- **Phase**: No status — pure grouping
+- **Bolt**: `planning` → `active` (intentional start) → `completed` (intentional end). Cannot be restarted.
+- **Step**: `todo` → `in_progress` → `done`/`cancelled`. Requires active plan + active bolt to start.
+- **Step statuses**: `todo`, `in_progress`, `blocked`, `done`, `cancelled`
 
 ### Prompt tips
 
