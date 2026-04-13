@@ -311,7 +311,7 @@ export default function TimelineView({ projectId, onSelectStep }: TimelineViewPr
                       <div className="mb-2">
                         <span className="text-xs font-medium text-danger">Blocked ({blocked.length})</span>
                         {blocked.map(s => {
-                          const blockers = boltProgress.steps.filter(b => s.depends_on.includes(b.id));
+                          const blockers = boltProgress.steps.filter(b => (s.depends_on || []).includes(b.id));
                           return (
                             <div key={s.id} className="flex items-center gap-2 mt-1 text-xs">
                               <span className="text-danger">⊘</span>

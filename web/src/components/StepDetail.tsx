@@ -265,11 +265,11 @@ export default function StepDetail({ stepId, projectId, onClose }: StepDetailPro
         </div>
 
         {/* Dependencies */}
-        {step.depends_on.length > 0 && (
+        {(step.depends_on || []).length > 0 && (
           <div>
             <Label>Dependencies</Label>
             <div className="flex flex-wrap gap-1.5">
-              {step.depends_on.map((dep) => (
+              {(step.depends_on || []).map((dep) => (
                 <span key={dep} className="text-xs font-mono bg-border/50 text-muted px-2 py-0.5 rounded" title={dep}>
                   ...{dep.slice(-6)}
                 </span>
