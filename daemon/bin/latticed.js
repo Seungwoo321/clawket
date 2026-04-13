@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { spawn, execSync } from 'node:child_process';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { paths, ensureDirs } from '../src/paths.js';
@@ -54,8 +54,31 @@ async function waitForReady(timeoutMs = 5000) {
 
 // ========== Commands ==========
 
+function ensureDeps() {
+  const daemonRoot = join(__dirname, '..');
+  const nodeModules = join(daemonRoot, 'node_modules');
+  if (existsSync(join(daemonRoot, 'package.json')) && !existsSync(nodeModules)) {
+    process.stderr.write(`[latticed] Installing daemon dependencies...\n`);
+    const npmrc = join(daemonRoot, '.npmrc');
+    if (!existsSync(npmrc)) writeFileSync(npmrc, 'node-linker=hoisted\n');
+    try {
+      execSync('pnpm --version', { stdio: 'pipe' });
+      execSync('pnpm install --prod', { cwd: daemonRoot, stdio: ['pipe', 'pipe', process.stderr], timeout: 120000 });
+      process.stderr.write(`[latticed] Dependencies installed (pnpm)\n`);
+    } catch {
+      try {
+        execSync('npm install --production', { cwd: daemonRoot, stdio: ['pipe', 'pipe', process.stderr], timeout: 120000 });
+        process.stderr.write(`[latticed] Dependencies installed (npm)\n`);
+      } catch (e) {
+        process.stderr.write(`[latticed] ERROR: Failed to install dependencies: ${e.message}\n`);
+      }
+    }
+  }
+}
+
 async function cmdStart() {
   ensureDirs();
+  ensureDeps();
   const pid = readPid();
   if (pid && isRunning(pid)) {
     const health = await httpHealthCheck();
