@@ -1,13 +1,15 @@
 {
   "name": "lattice",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "LLM-native work management state layer",
   "type": "module",
   "bin": {
     "latticed": "./bin/latticed.js"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   },
   "dependencies": {
     "@hono/node-server": "^1.19.13",
