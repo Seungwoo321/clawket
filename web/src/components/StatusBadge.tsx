@@ -11,10 +11,7 @@ const statusConfig: Record<string, { label: string; variant: BadgeProps['variant
   in_progress: { label: 'In Progress', variant: 'warning' },
   done: { label: 'Done', variant: 'success' },
   blocked: { label: 'Blocked', variant: 'danger' },
-  review: { label: 'Review', variant: 'info' },
   cancelled: { label: 'Cancelled', variant: 'default' },
-  superseded: { label: 'Superseded', variant: 'default' },
-  deferred: { label: 'Deferred', variant: 'default' },
   // Plan statuses
   draft: { label: 'Draft', variant: 'default' },
   active: { label: 'Active', variant: 'primary' },

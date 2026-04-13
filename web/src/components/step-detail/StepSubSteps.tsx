@@ -6,12 +6,9 @@ import { Label, Input, Button } from '../ui';
 const STEP_STATUS_ICON: Record<Step['status'], { icon: string; color: string }> = {
   todo: { icon: '\u25CB', color: 'text-muted' },
   in_progress: { icon: '\u25D0', color: 'text-warning' },
-  review: { icon: '\u25D2', color: 'text-primary' },
   done: { icon: '\u25CF', color: 'text-success' },
   blocked: { icon: '\u2298', color: 'text-danger' },
   cancelled: { icon: '\u2715', color: 'text-muted' },
-  superseded: { icon: '\u2715', color: 'text-muted' },
-  deferred: { icon: '\u223C', color: 'text-muted' },
 };
 
 function SubStepTree({ steps, depth = 0 }: { steps: Step[]; depth?: number }) {

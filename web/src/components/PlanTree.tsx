@@ -28,12 +28,9 @@ interface PlanWithPhases extends Plan {
 const stepStatusIcon: Record<Step['status'], { icon: string; color: string }> = {
   todo: { icon: '\u25CB', color: 'text-muted' },
   in_progress: { icon: '\u25D0', color: 'text-warning' },
-  review: { icon: '\u25D2', color: 'text-primary' },
   done: { icon: '\u25CF', color: 'text-success' },
   blocked: { icon: '\u2298', color: 'text-danger' },
   cancelled: { icon: '\u2715', color: 'text-muted' },
-  superseded: { icon: '\u2715', color: 'text-muted' },
-  deferred: { icon: '\u223C', color: 'text-muted' },
 };
 
 const priorityDotColor: Record<Step['priority'], string> = {
@@ -46,8 +43,9 @@ const priorityDotColor: Record<Step['priority'], string> = {
 const STEP_STATUSES: { value: Step['status']; label: string }[] = [
   { value: 'todo', label: 'Todo' },
   { value: 'in_progress', label: 'In Progress' },
-  { value: 'done', label: 'Done' },
   { value: 'blocked', label: 'Blocked' },
+  { value: 'done', label: 'Done' },
+  { value: 'cancelled', label: 'Cancelled' },
 ];
 
 export default function PlanTree({ projectId, selectedItem, onSelectItem, onCreatePlan, onCreatePhase, onCreateStep }: PlanTreeProps) {
@@ -326,10 +324,7 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                   {/* Steps */}
                   {expandedPhases.has(phase.id) &&
                     phase.steps.map((step) => {
-                      const si = stepStatusIcon[step.status] ?? (() => {
-                        console.warn(`[PlanTree] Unknown step status: "${step.status}" for step ${step.id}`);
-                        return { icon: '\u25CB', color: 'text-muted' };
-                      })();
+                      const si = stepStatusIcon[step.status];
                       const isSelected = selectedStepIds.has(step.id);
                       const isInlineTitle = inlineEdit.editId === step.id && inlineEdit.editField === 'title';
                       const isInlineStatus = inlineEdit.editId === step.id && inlineEdit.editField === 'status';

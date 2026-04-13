@@ -225,14 +225,13 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
           {phases.map(phase => {
             const phaseSteps = steps.filter(s => s.phase_id === phase.id);
             const pDone = phaseSteps.filter(s => CLOSED_STATUSES.has(s.status)).length;
-            const pDeferred = phaseSteps.filter(s => s.status === 'deferred').length;
             const pTotal = phaseSteps.length;
             return (
               <div key={phase.id} className="flex items-center gap-3">
                 <StatusBadge status={phase.status} />
                 <span className="text-sm text-foreground flex-1 truncate">{phase.title}</span>
                 <span className="text-xs text-muted whitespace-nowrap">
-                  {pDone}/{pTotal}{pDeferred > 0 ? ` (${pDeferred} deferred)` : ''}
+                  {pDone}/{pTotal}
                 </span>
                 <div className="w-24 h-1.5 rounded-full bg-surface-high overflow-hidden">
                   {pTotal > 0 && (

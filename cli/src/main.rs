@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 
 #[derive(Parser)]
-#[command(name = "lattice", about = "LLM-native work management CLI")]
+#[command(name = "lattice", about = "LLM-native work management CLI for Claude Code.\n\nLattice enforces structured workflows: Project → Plan → Phase → Bolt → Step.\nAll work requires an active step. Phases/Plans complete automatically based on step states.\n\nStep statuses: todo, in_progress, blocked, done, cancelled\nTerminal (closed): done, cancelled\n\nQuick start:\n  lattice project new \"my-app\" --cwd .\n  lattice plan new --project PROJ-my-app \"MVP\"\n  lattice phase new --plan PLAN-xxx \"Phase 1\"\n  lattice bolt new --project PROJ-my-app \"Sprint 1\"\n  lattice step new \"Build login\" --assignee main")]
 struct Cli {
     /// Output format: json (default), table, yaml
     #[arg(long, global = true, default_value = "json")]
@@ -104,35 +104,50 @@ pub enum DaemonAction {
 // ========== Project ==========
 #[derive(Subcommand)]
 enum ProjectAction {
+    /// Create a new project. Each project maps to one or more working directories.
     New {
+        /// Project name (used to generate ID: PROJ-<slugified-name>)
         name: String,
+        /// Project description
         #[arg(long)]
         description: Option<String>,
+        /// Working directory to associate (defaults to current dir)
         #[arg(long)]
         cwd: Option<String>,
+        /// Short uppercase key for ticket numbers (e.g. LAT → LAT-1, LAT-2)
         #[arg(long)]
         key: Option<String>,
     },
+    /// Show project details by ID
     Show { id: String },
+    /// List all projects
     List,
+    /// Update project properties
     Update {
         id: String,
         #[arg(long)]
         name: Option<String>,
         #[arg(long)]
         description: Option<String>,
-        /// JSON array of wiki root paths, e.g. '["docs","wiki"]'
+        /// Wiki root paths as JSON array, e.g. '["docs","wiki","/absolute/path"]'
         #[arg(long)]
         wiki_paths: Option<String>,
     },
+    /// Delete a project and all associated data
     Delete { id: String },
+    /// Add a working directory to the project
+    #[command(name = "add-cwd")]
     AddCwd {
         id: String,
+        /// Directory path to add
         #[arg(long)]
         cwd: Option<String>,
     },
+    /// Remove a working directory from the project
+    #[command(name = "remove-cwd")]
     RemoveCwd {
         id: String,
+        /// Directory path to remove
         #[arg(long)]
         cwd: String,
     },
@@ -270,25 +285,36 @@ enum BoltAction {
 // ========== Step ==========
 #[derive(Subcommand)]
 enum StepAction {
+    /// Create a new step (atomic work unit). Requires phase and bolt.
+    /// Status: todo → in_progress → done/cancelled. Blocked for external dependencies.
     New {
+        /// Step title describing the work
         title: String,
         /// Phase ID (auto-inferred from active plan if omitted)
         #[arg(long)]
         phase: Option<String>,
+        /// Detailed description (markdown supported)
         #[arg(long, allow_hyphen_values = true)]
         body: Option<String>,
+        /// Agent or person responsible (e.g. "main", "sub-agent-1")
         #[arg(long)]
         assignee: Option<String>,
+        /// Sort order within phase
         #[arg(long)]
         idx: Option<i64>,
+        /// Comma-separated step IDs this step depends on
         #[arg(long, value_delimiter = ',')]
         depends_on: Vec<String>,
+        /// Parent step ID for sub-tasks
         #[arg(long)]
         parent_step: Option<String>,
+        /// Priority: critical, high, medium, low
         #[arg(long, default_value = "medium")]
         priority: String,
+        /// Complexity estimate (freeform, e.g. "high", "3 files")
         #[arg(long)]
         complexity: Option<String>,
+        /// Estimated number of file edits
         #[arg(long)]
         estimated_edits: Option<i64>,
         /// Bolt ID (auto-inferred from active bolt if omitted)
@@ -298,27 +324,36 @@ enum StepAction {
         #[arg(long, default_value = "task")]
         r#type: String,
     },
+    /// Show step details by ID
     Show { id: String },
+    /// List steps with optional filters
     List {
+        /// Filter by phase ID
         #[arg(long)]
         phase_id: Option<String>,
+        /// Filter by plan ID
         #[arg(long)]
         plan_id: Option<String>,
+        /// Filter by status: todo, in_progress, blocked, done, cancelled
         #[arg(long)]
         status: Option<String>,
     },
+    /// Update step fields. Status values: todo, in_progress, blocked, done, cancelled
     Update {
         id: String,
         #[arg(long)]
         title: Option<String>,
+        /// Status: todo, in_progress, blocked, done, cancelled
         #[arg(long)]
         status: Option<String>,
+        /// Agent or person responsible
         #[arg(long)]
         assignee: Option<String>,
         #[arg(long)]
         session_id: Option<String>,
         #[arg(long, default_value = "main")]
         agent: String,
+        /// Priority: critical, high, medium, low
         #[arg(long)]
         priority: Option<String>,
         #[arg(long)]

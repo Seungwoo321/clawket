@@ -24,17 +24,15 @@ interface BoardViewProps {
 
 const BOLT_STATUS_ORDER: Bolt['status'][] = ['planning', 'active'];
 
-const BOLT_STATUS_BADGE_VARIANT: Record<Bolt['status'], 'default' | 'primary' | 'warning' | 'success'> = {
+const BOLT_STATUS_BADGE_VARIANT: Record<Bolt['status'], 'default' | 'primary' | 'success'> = {
   planning: 'default',
   active: 'primary',
-  review: 'warning',
   completed: 'success',
 };
 
 const BOLT_STATUS_LABEL: Record<Bolt['status'], string> = {
   planning: 'Planning',
   active: 'Active',
-  review: 'Review',
   completed: 'Completed',
 };
 
@@ -163,7 +161,7 @@ export default function BoardView({ projectId, onSelectStep }: BoardViewProps) {
   }
 
   const stepsByStatus: Record<Step['status'], Step[]> = {
-    todo: [], in_progress: [], review: [], done: [], blocked: [], cancelled: [], superseded: [], deferred: [],
+    todo: [], in_progress: [], done: [], blocked: [], cancelled: [],
   };
   for (const step of steps) {
     if (stepsByStatus[step.status]) stepsByStatus[step.status].push(step);

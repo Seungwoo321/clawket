@@ -21,7 +21,7 @@ interface StepDetailProps {
   onClose: () => void;
 }
 
-const STATUS_OPTIONS: Step['status'][] = ['todo', 'in_progress', 'review', 'done', 'blocked', 'cancelled', 'deferred'];
+const STATUS_OPTIONS: Step['status'][] = ['todo', 'in_progress', 'blocked', 'done', 'cancelled'];
 
 export default function StepDetail({ stepId, projectId, onClose }: StepDetailProps) {
   const [step, setStep] = useState<Step | null>(null);

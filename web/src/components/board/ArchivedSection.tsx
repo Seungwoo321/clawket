@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import type { Step } from '../../types';
 
-const ARCHIVED_STATUSES: Step['status'][] = ['cancelled', 'superseded', 'deferred'];
+const ARCHIVED_STATUSES: Step['status'][] = ['cancelled'];
 
 const ARCHIVED_STATUS_ICON: Record<string, { icon: string; label: string }> = {
   cancelled: { icon: '\u2715', label: 'Cancelled' },
-  superseded: { icon: '\u2715', label: 'Superseded' },
-  deferred: { icon: '\u223C', label: 'Deferred' },
 };
 
 export function ArchivedSection({
@@ -32,7 +30,7 @@ export function ArchivedSection({
         <span className="text-xs bg-muted/20 text-muted px-1.5 py-0.5 rounded-full">{archivedSteps.length}</span>
       </button>
       {open && (
-        <div className="grid grid-cols-3 gap-3 mt-2">
+        <div className="grid grid-cols-1 gap-3 mt-2">
           {ARCHIVED_STATUSES.map(status => {
             const items = stepsByStatus[status];
             if (items.length === 0) return null;

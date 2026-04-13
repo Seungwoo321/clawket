@@ -408,8 +408,12 @@ export const steps = {
       }
     }
     if ('status' in fields) {
+      const VALID_STATUSES = new Set(['todo', 'in_progress', 'done', 'blocked', 'cancelled']);
+      if (!VALID_STATUSES.has(fields.status)) {
+        throw Object.assign(new Error(`Invalid step status: "${fields.status}". Valid: ${[...VALID_STATUSES].join(', ')}`), { status: 400 });
+      }
       if (fields.status === 'in_progress') { sets.push('started_at = COALESCE(started_at, ?)'); vals.push(now()); }
-      if (['done', 'cancelled', 'superseded'].includes(fields.status)) { sets.push('completed_at = ?'); vals.push(now()); }
+      if (['done', 'cancelled'].includes(fields.status)) { sets.push('completed_at = ?'); vals.push(now()); }
     }
     if (sets.length === 0) return steps.get(id);
     vals.push(id);
@@ -427,7 +431,7 @@ export const steps = {
           runs.create({ step_id: id, session_id: sessionId, agent });
         }
       }
-      if (['done', 'cancelled', 'superseded'].includes(fields.status)) {
+      if (['done', 'cancelled'].includes(fields.status)) {
         // Finish all active runs for this step
         const result = fields.status === 'done' ? 'success' : fields.status;
         for (const r of runs.list({ step_id: id })) {
@@ -474,11 +478,11 @@ export const steps = {
     }
 
     // Auto-complete phase & plan if ALL steps are terminal
-    if ('status' in fields && ['done', 'cancelled', 'superseded'].includes(fields.status)) {
+    if ('status' in fields && ['done', 'cancelled'].includes(fields.status)) {
       const updatedStep = steps.get(id);
       if (updatedStep) {
         const phaseSteps = steps.list({ phase_id: updatedStep.phase_id });
-        const terminalStatuses = new Set(['done', 'cancelled', 'superseded']);
+        const terminalStatuses = new Set(['done', 'cancelled']);
         const allDone = phaseSteps.every(s => terminalStatuses.has(s.status));
         if (allDone && phaseSteps.length > 0) {
           const phase = phases.get(updatedStep.phase_id);

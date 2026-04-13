@@ -18,7 +18,7 @@ export interface Bolt {
   created_at: number;
   started_at: number | null;
   ended_at: number | null;
-  status: 'planning' | 'active' | 'review' | 'completed';
+  status: 'planning' | 'active' | 'completed';
 }
 
 export interface Plan {
@@ -57,7 +57,7 @@ export interface Step {
   created_at: number;
   started_at: number | null;
   completed_at: number | null;
-  status: 'todo' | 'in_progress' | 'done' | 'blocked' | 'review' | 'cancelled' | 'superseded' | 'deferred';
+  status: 'todo' | 'in_progress' | 'done' | 'blocked' | 'cancelled';
   assignee: string | null;
   depends_on: string[];
   ticket_number: string | null;
@@ -138,7 +138,8 @@ export interface TimelineEvent {
 }
 
 /** Terminal statuses — steps that count as "closed" for progress calculations */
-export const CLOSED_STATUSES: ReadonlySet<Step['status']> = new Set(['done', 'cancelled', 'superseded']);
+/** Terminal statuses — steps that count as "closed" for progress calculations */
+export const CLOSED_STATUSES: ReadonlySet<Step['status']> = new Set(['done', 'cancelled']);
 
 export function isClosedStep(step: Pick<Step, 'status'>): boolean {
   return CLOSED_STATUSES.has(step.status);

@@ -781,7 +781,7 @@ export function startServer() {
         const nonDone = allSteps.filter(s => s.status !== 'done');
         if (nonDone.length > 0) {
           for (const step of nonDone) {
-            const icon = { todo: '[ ]', in_progress: '[>]', blocked: '[!]', review: '[?]', cancelled: '[-]', superseded: '[-]', deferred: '[~]' }[step.status] || '[ ]';
+            const icon = { todo: '[ ]', in_progress: '[>]', blocked: '[!]', cancelled: '[-]', done: '[x]' }[step.status] || '[ ]';
             const assignee = step.assignee ? ` @${step.assignee}` : '';
             const ref = step.ticket_number || step.id;
             lines.push(`  ${icon} ${step.title} (${ref})${assignee}`);
@@ -794,7 +794,7 @@ export function startServer() {
       // Active phases: show non-done steps only (save tokens), use ticket_number
       const nonDoneSteps = allSteps.filter(s => s.status !== 'done');
       for (const step of nonDoneSteps) {
-        const icon = { todo: '[ ]', in_progress: '[>]', blocked: '[!]', review: '[?]', cancelled: '[-]', superseded: '[-]', deferred: '[~]' }[step.status] || '[ ]';
+        const icon = { todo: '[ ]', in_progress: '[>]', blocked: '[!]', cancelled: '[-]', done: '[x]' }[step.status] || '[ ]';
         const assignee = step.assignee ? ` @${step.assignee}` : '';
         const ref = step.ticket_number || step.id;
         lines.push(`  ${icon} ${step.title} (${ref})${assignee}`);
