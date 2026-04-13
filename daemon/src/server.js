@@ -703,11 +703,11 @@ export function startServer() {
     const cwd = c.req.query('cwd') || null;
     const show = c.req.query('show') || 'all'; // active | next | all
 
-    // Find project by cwd or return empty
+    // Find enabled project by cwd or return empty
     let project = null;
-    if (cwd) project = projects.getByCwd(cwd);
+    if (cwd) project = projects.getByCwd(cwd, { enabledOnly: true });
     if (!project) {
-      const all = projects.list();
+      const all = projects.list().filter(p => p.enabled);
       if (all.length === 1) project = all[0];
     }
     if (!project) {

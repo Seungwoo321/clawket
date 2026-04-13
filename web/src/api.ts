@@ -103,7 +103,7 @@ export function createProject(data: {
 
 export function updateProject(
   id: string,
-  data: Partial<Pick<Project, 'name' | 'description' | 'cwds'>>,
+  data: Partial<Pick<Project, 'name' | 'description' | 'cwds' | 'enabled'>>,
 ): Promise<Project> {
   return patch(`/projects/${encodeURIComponent(id)}`, data);
 }

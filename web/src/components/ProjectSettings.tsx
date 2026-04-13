@@ -123,6 +123,25 @@ export function ProjectSettings({
             </div>
           </div>
 
+          {/* Lattice Enabled */}
+          <div>
+            <label className="text-xs text-muted block mb-1">Lattice Management</label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={async () => {
+                  await api.updateProject(projectId, { enabled: project.enabled ? 0 : 1 });
+                  await onProjectChange();
+                }}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${project.enabled ? 'bg-success' : 'bg-muted/30'}`}
+              >
+                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${project.enabled ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+              </button>
+              <span className="text-xs text-foreground">
+                {project.enabled ? 'Active — hooks enforce step registration' : 'Disabled — Claude works without Lattice constraints'}
+              </span>
+            </div>
+          </div>
+
           {/* Project ID */}
           <div>
             <label className="text-xs text-muted block mb-1">Project ID</label>

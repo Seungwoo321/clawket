@@ -5,6 +5,7 @@ export interface Project {
   created_at: number;
   updated_at: number;
   cwds: string[];
+  enabled: number;
 }
 
 export interface Bolt {

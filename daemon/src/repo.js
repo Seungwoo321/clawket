@@ -52,11 +52,12 @@ export const projects = {
     const row = db.prepare(`SELECT * FROM projects WHERE name = ?`).get(name);
     return row ? projects.get(row.id) : null;
   },
-  getByCwd(cwd) {
+  getByCwd(cwd, { enabledOnly = false } = {}) {
     const db = getDb();
-    const row = db.prepare(
-      `SELECT p.* FROM projects p JOIN project_cwds c ON c.project_id = p.id WHERE c.cwd = ? LIMIT 1`
-    ).get(cwd);
+    const sql = enabledOnly
+      ? `SELECT p.* FROM projects p JOIN project_cwds c ON c.project_id = p.id WHERE c.cwd = ? AND p.enabled = 1 LIMIT 1`
+      : `SELECT p.* FROM projects p JOIN project_cwds c ON c.project_id = p.id WHERE c.cwd = ? LIMIT 1`;
+    const row = db.prepare(sql).get(cwd);
     return row ? projects.get(row.id) : null;
   },
   list() {
@@ -79,7 +80,7 @@ export const projects = {
   },
   update(id, fields) {
     const db = getDb();
-    const allowed = ['name', 'description', 'key'];
+    const allowed = ['name', 'description', 'key', 'enabled'];
     const sets = [];
     const vals = [];
     for (const k of allowed) {
