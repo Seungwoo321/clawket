@@ -213,15 +213,6 @@ export default function BacklogView({ projectId, onSelectStep }: BacklogViewProp
                         Start Bolt
                       </Button>
                     )}
-                    {bolt.status === 'active' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => { e.stopPropagation(); handleBoltStatusChange(bolt.id, 'review'); }}
-                      >
-                        Complete
-                      </Button>
-                    )}
                   </div>
 
                   {/* Bolt steps */}

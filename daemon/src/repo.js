@@ -463,6 +463,13 @@ export const steps = {
       const updatedStep = steps.get(id);
       if (updatedStep) {
         _autoActivateAncestors(db, updatedStep.phase_id);
+        // Auto-activate bolt if completed
+        if (updatedStep.bolt_id) {
+          const bolt = bolts.get(updatedStep.bolt_id);
+          if (bolt && bolt.status === 'completed') {
+            bolts.update(updatedStep.bolt_id, { status: 'active' });
+          }
+        }
       }
     }
 
@@ -487,6 +494,17 @@ export const steps = {
               if (plan && plan.status !== 'completed') {
                 plans.update(phase.plan_id, { status: 'completed' });
               }
+            }
+          }
+        }
+        // Auto-complete bolt if ALL its steps are terminal
+        if (updatedStep.bolt_id) {
+          const boltSteps = steps.list({ bolt_id: updatedStep.bolt_id });
+          const allBoltDone = boltSteps.every(s => terminalStatuses.has(s.status));
+          if (allBoltDone && boltSteps.length > 0) {
+            const bolt = bolts.get(updatedStep.bolt_id);
+            if (bolt && bolt.status !== 'completed') {
+              bolts.update(updatedStep.bolt_id, { status: 'completed' });
             }
           }
         }

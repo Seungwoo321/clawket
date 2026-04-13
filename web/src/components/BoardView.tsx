@@ -22,7 +22,7 @@ interface BoardViewProps {
   onSelectStep: (stepId: string) => void;
 }
 
-const BOLT_STATUS_ORDER: Bolt['status'][] = ['planning', 'active', 'review', 'completed'];
+const BOLT_STATUS_ORDER: Bolt['status'][] = ['planning', 'active'];
 
 const BOLT_STATUS_BADGE_VARIANT: Record<Bolt['status'], 'default' | 'primary' | 'warning' | 'success'> = {
   planning: 'default',
