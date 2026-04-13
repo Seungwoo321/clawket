@@ -66,7 +66,7 @@ export default function PhaseDetail({ phaseId, onClose }: PhaseDetailProps) {
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted font-mono">{phase.id.slice(0, 8)}</span>
-          <StatusBadge status={phase.status} />
+          {/* Phase: no status */}
         </div>
         <button onClick={onClose} className="text-muted hover:text-foreground text-lg leading-none">&times;</button>
       </div>

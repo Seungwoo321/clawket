@@ -107,8 +107,7 @@ export default function PlanDetail({ planId, onClose }: PlanDetailProps) {
                 <div key={ph.id} className="flex items-center gap-2 bg-background border border-border rounded px-3 py-2">
                   <span className="text-xs text-muted font-mono w-5">#{ph.idx + 1}</span>
                   <span className="text-sm text-foreground truncate flex-1">{ph.title}</span>
-                  <StatusBadge status={ph.status} size="sm" />
-                  {ph.approved_at && <span className="text-xs text-success">{'\u2713'}</span>}
+                  {/* Phase: no status */}
                 </div>
               ))}
             </div>

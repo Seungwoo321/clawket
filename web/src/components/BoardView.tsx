@@ -198,7 +198,7 @@ export default function BoardView({ projectId, onSelectStep }: BoardViewProps) {
 
       {/* Kanban columns */}
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="flex-1 grid grid-cols-5 gap-4 min-h-0">
+        <div className="flex-1 grid grid-cols-4 gap-4 min-h-0">
           {COLUMNS.map((col) => {
             const colSteps = stepsByStatus[col.key];
             return (

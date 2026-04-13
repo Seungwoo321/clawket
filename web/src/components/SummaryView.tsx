@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Project, Plan, Phase, Step, Bolt, Run } from '../types';
 import { CLOSED_STATUSES } from '../types';
 import api from '../api';
-import StatusBadge from './StatusBadge';
 import { ProjectSettings } from './ProjectSettings';
 
 interface SummaryViewProps {
@@ -228,7 +227,6 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
             const pTotal = phaseSteps.length;
             return (
               <div key={phase.id} className="flex items-center gap-3">
-                <StatusBadge status={phase.status} />
                 <span className="text-sm text-foreground flex-1 truncate">{phase.title}</span>
                 <span className="text-xs text-muted whitespace-nowrap">
                   {pDone}/{pTotal}

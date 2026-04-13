@@ -306,7 +306,7 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                       onClick={() => onSelectItem({ type: 'phase', id: phase.id })}
                     >
                       <span className="text-sm text-foreground truncate">{phase.title}</span>
-                      <StatusBadge status={phase.status} size="sm" />
+                      {/* Phase has no status — show step progress instead */}
                       {phase.approved_at && (
                         <span className="text-xs text-success" title="Approved">{'\u2713'}</span>
                       )}

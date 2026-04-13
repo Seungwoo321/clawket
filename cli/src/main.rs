@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 
 #[derive(Parser)]
-#[command(name = "lattice", about = "LLM-native work management CLI for Claude Code.\n\nLattice enforces structured workflows: Project → Plan → Phase → Bolt → Step.\nAll work requires an active step. Phases/Plans complete automatically based on step states.\n\nStep statuses: todo, in_progress, blocked, done, cancelled\nTerminal (closed): done, cancelled\n\nQuick start:\n  lattice project new \"my-app\" --cwd .\n  lattice plan new --project PROJ-my-app \"MVP\"\n  lattice phase new --plan PLAN-xxx \"Phase 1\"\n  lattice bolt new --project PROJ-my-app \"Sprint 1\"\n  lattice step new \"Build login\" --assignee main")]
+#[command(name = "lattice", about = "LLM-native work management CLI for Claude Code.\n\nWorkflow: Project → Plan (approve) → Phase → Bolt (activate) → Step\n\nPlan must be approved (draft → active) before steps can be started.\nBolt must be activated (planning → active) before steps can be started.\nPhase is a pure grouping entity with no status.\nStep is the only entity managed directly: todo → in_progress → done/cancelled.\nCompleted bolts cannot be restarted — create a new one.\n\nQuick start:\n  lattice project new \"my-app\" --cwd .\n  lattice plan new --project PROJ-my-app \"MVP\"\n  lattice plan approve PLAN-xxx\n  lattice phase new --plan PLAN-xxx \"Phase 1\"\n  lattice bolt new --project PROJ-my-app \"Sprint 1\"\n  lattice bolt activate BOLT-xxx\n  lattice step new \"Build login\" --assignee main\n  lattice step update STEP-xxx --status in_progress\n  lattice step update STEP-xxx --status done")]
 struct Cli {
     /// Output format: json (default), table, yaml
     #[arg(long, global = true, default_value = "json")]
@@ -156,37 +156,53 @@ enum ProjectAction {
 // ========== Plan ==========
 #[derive(Subcommand)]
 enum PlanAction {
+    /// Create a new plan. Plans start as 'draft' and must be approved before work can begin.
+    /// Steps can be created under draft plans (as todo) but cannot be started (in_progress).
     New {
+        /// Plan title
         title: String,
+        /// Project ID this plan belongs to
         #[arg(long)]
         project: String,
+        /// Plan description
         #[arg(long)]
         description: Option<String>,
+        /// Source: manual (default) or import
         #[arg(long, default_value = "manual")]
         source: String,
+        /// Source file path (for imported plans)
         #[arg(long)]
         source_path: Option<String>,
     },
+    /// Show plan details
     Show { id: String },
+    /// List plans with optional filters
     List {
+        /// Filter by project ID
         #[arg(long)]
         project_id: Option<String>,
+        /// Filter by status: draft, active, completed
         #[arg(long)]
         status: Option<String>,
     },
+    /// Update plan properties. Status: draft, active, completed
     Update {
         id: String,
         #[arg(long)]
         title: Option<String>,
         #[arg(long)]
         description: Option<String>,
+        /// Plan status: draft, active, completed. Use 'approve' command for draft → active.
         #[arg(long)]
         status: Option<String>,
     },
+    /// Delete a plan
     Delete { id: String },
-    /// Approve a draft plan (draft → active)
+    /// Approve a draft plan (draft → active). Required before steps can be started.
     Approve { id: String },
+    /// Import a plan from a markdown file
     Import {
+        /// Path to plan markdown file
         file: String,
         #[arg(long)]
         project: Option<String>,
@@ -202,81 +218,92 @@ enum PlanAction {
 // ========== Phase ==========
 #[derive(Subcommand)]
 enum PhaseAction {
+    /// Create a new phase. Phase is a pure grouping entity (no status).
+    /// Organize steps into logical groups within a plan.
     New {
+        /// Phase title
         title: String,
+        /// Plan ID this phase belongs to
         #[arg(long)]
         plan: String,
+        /// Phase goal description
         #[arg(long)]
         goal: Option<String>,
+        /// Sort order within plan
         #[arg(long)]
         idx: Option<i64>,
-        #[arg(long)]
-        approval: bool,
     },
+    /// Show phase details
     Show { id: String },
+    /// List phases with optional filters
     List {
+        /// Filter by plan ID
         #[arg(long)]
         plan_id: Option<String>,
-        #[arg(long)]
-        status: Option<String>,
     },
+    /// Update phase title or goal
     Update {
         id: String,
         #[arg(long)]
         title: Option<String>,
         #[arg(long)]
         goal: Option<String>,
-        #[arg(long)]
-        status: Option<String>,
     },
+    /// Delete a phase
     Delete { id: String },
-    Approve {
-        id: String,
-        #[arg(long, default_value = "human")]
-        by: String,
-    },
-    WaitApproval {
-        id: String,
-        #[arg(long, default_value = "600")]
-        timeout: u64,
-    },
 }
 
 // ========== Bolt ==========
 #[derive(Subcommand)]
 enum BoltAction {
+    /// Create a new bolt (sprint). Starts in 'planning' status.
+    /// Bolts are time-boxed iterations that pull steps from any phase/plan.
+    /// Multiple active bolts per project are supported (parallel bolts).
     New {
+        /// Bolt title (e.g. "Sprint 1", "v2.0 Bolt")
         title: String,
+        /// Project ID this bolt belongs to
         #[arg(long)]
         project: String,
+        /// Sprint goal
         #[arg(long)]
         goal: Option<String>,
+        /// Sort order
         #[arg(long)]
         idx: Option<i64>,
     },
+    /// Show bolt details
     Show { id: String },
+    /// List bolts with optional filters
     List {
+        /// Filter by project ID
         #[arg(long)]
         project_id: Option<String>,
+        /// Filter by status: planning, active, completed
         #[arg(long)]
         status: Option<String>,
     },
+    /// Update bolt properties. Status: planning, active, completed.
+    /// Completed bolts cannot be restarted — create a new bolt instead.
     Update {
         id: String,
         #[arg(long)]
         title: Option<String>,
         #[arg(long)]
         goal: Option<String>,
+        /// Status: planning, active, completed
         #[arg(long)]
         status: Option<String>,
     },
+    /// Delete a bolt (unassigns all steps)
     Delete { id: String },
-    /// Activate a planning bolt (planning → active)
+    /// Activate a planning bolt (planning → active). Required before steps can be started.
     Activate { id: String },
     /// List steps assigned to this bolt
     Steps { id: String },
-    /// List backlog steps (not assigned to any bolt)
+    /// List backlog steps (not assigned to any bolt) for a project
     Backlog {
+        /// Project ID
         #[arg(long)]
         project: String,
     },
@@ -788,33 +815,24 @@ async fn main() -> Result<()> {
 
         // ===== Phase =====
         Command::Phase { action } => match action {
-            PhaseAction::New { title, plan, goal, idx, approval } => {
+            PhaseAction::New { title, plan, goal, idx } => {
                 output(&client::request(&c, "POST", "/phases", Some(json!({
                     "plan_id": plan, "title": title, "goal": goal, "idx": idx,
-                    "approval_required": approval,
                 }))).await?);
             }
             PhaseAction::Show { id } => output(&client::get(&c, &format!("/phases/{id}")).await?),
-            PhaseAction::List { plan_id, status } => {
-                let qs = query_string(&[("plan_id", &plan_id), ("status", &status)]);
+            PhaseAction::List { plan_id } => {
+                let qs = query_string(&[("plan_id", &plan_id)]);
                 output(&client::get(&c, &format!("/phases{qs}")).await?);
             }
-            PhaseAction::Update { id, title, goal, status } => {
+            PhaseAction::Update { id, title, goal } => {
                 let mut body = json!({});
                 if let Some(v) = title { body["title"] = json!(v); }
                 if let Some(v) = goal { body["goal"] = json!(v); }
-                if let Some(v) = status { body["status"] = json!(v); }
                 output(&client::request(&c, "PATCH", &format!("/phases/{id}"), Some(body)).await?);
             }
             PhaseAction::Delete { id } => {
                 output(&client::request(&c, "DELETE", &format!("/phases/{id}"), None).await?);
-            }
-            PhaseAction::Approve { id, by } => {
-                output(&client::request(&c, "POST", &format!("/phases/{id}/approve"), Some(json!({"by": by}))).await?);
-            }
-            PhaseAction::WaitApproval { id, timeout } => {
-                let val = client::sse_wait_approval(&c, &id, timeout).await?;
-                output(&val);
             }
         },
 

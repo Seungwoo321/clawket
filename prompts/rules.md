@@ -6,16 +6,15 @@ LLM-native work management system. All work history is permanently stored in a l
 
 - **Structured over ad-hoc**: Every task is tracked as a Step. No work without registration.
 - **Session persistence**: Context survives across sessions. No more "where was I?"
-- **Automated transitions**: Phase/Plan/Bolt states update automatically based on step completion.
 - **Single source of truth**: Lattice DB is the canonical record, not Plan Mode files or local notes.
 
 ## Entity Relationships
 
 ```
 Project
-├── Plan (roadmap/intent — hierarchical grouping)
-│   └── Phase (epic — logical grouping within a plan)
-│       └── Step (atomic task — the unit you actually work on)
+├── Plan (intent/roadmap — must be approved before work can start)
+│   └── Phase (grouping — no status, pure organizational unit)
+│       └── Step (atomic task — the only entity you manage directly)
 │
 └── Bolt (sprint — time-boxed iteration, cross-cutting)
     └── Steps from ANY phase/plan in this project
@@ -23,20 +22,15 @@ Project
 
 ### Two axes of organization
 
-1. **Vertical (what):** Plan → Phase → Step
-   - Hierarchical grouping by scope. A Plan is a roadmap, Phases are epics within it, Steps are tasks within a phase.
-   - Steps have an order (idx) within their phase.
-
-2. **Horizontal (when):** Bolt → Steps
-   - Time-boxed iteration (sprint). A Bolt pulls steps from any phase/plan in the same project.
-   - One Bolt = "what we're doing this cycle." Steps from different plans can coexist in the same Bolt.
+1. **Vertical (what):** Plan → Phase → Step — hierarchical grouping by scope
+2. **Horizontal (when):** Bolt → Steps — time-boxed iteration pulling steps from any phase/plan
 
 ### Key rules
 
 - A Step belongs to exactly one Phase AND one Bolt.
-- A Bolt belongs to a Project, not a Plan. It can contain steps from multiple plans.
-- Plan/Phase/Bolt states are automatic — only Step status is managed manually.
-- A Plan must be approved (`lattice plan approve <ID>`) before steps can be created under it. Draft plans cannot have steps.
+- A Bolt belongs to a Project, not a Plan. Steps from different plans can coexist.
+- Phase has no status — it is a pure grouping entity.
+- Plan and Bolt require intentional approval/activation before work can start.
 
 ## Step Statuses
 
@@ -45,12 +39,27 @@ Project
 
 **Terminal (closed):** `done`, `cancelled`
 
-## Automatic State Transitions
+## State Management
 
-- **Step → in_progress**: Parent Phase/Plan become `active`. Parent Bolt becomes `active` if it was `completed`.
-- **All steps terminal**: Phase → `completed`, Plan → `completed`, Bolt → `completed`.
-- **New step created under completed Phase/Plan**: They reopen to `active`.
-- **Bolt**: `planning` → `active` is manual (intentional start). `active` → `completed` is automatic.
+### Plan: `draft` → `active` → `completed`
+- `draft` → `active`: Intentional approval via CLI (`lattice plan approve`) or web UI
+- `active` → `completed`: Intentional, when all work is done
+- Steps can be created under draft plans as `todo`, but cannot be started (`in_progress`)
+- `todo` steps under draft plans can be hard-deleted (the only case where delete is allowed)
+
+### Bolt: `planning` → `active` → `completed`
+- `planning` → `active`: Intentional start via CLI (`lattice bolt activate`) or web UI
+- `active` → `completed`: Intentional end — Bolt is a sprint, ended deliberately
+- **Completed bolts cannot be restarted.** Create a new bolt instead.
+- Steps can only be started (`in_progress`) if their bolt is `active`
+- Parallel bolts are supported — multiple active bolts per project
+
+### Phase: No status
+- Pure grouping. No state management needed.
+
+### Step: Only entity managed directly
+- Starting a step (`in_progress`) requires: Plan is `active` AND Bolt is `active`
+- Both LLM (CLI) and human (web UI) can change step status
 
 ## Workflow
 

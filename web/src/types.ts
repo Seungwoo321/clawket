@@ -42,7 +42,7 @@ export interface Phase {
   created_at: number;
   started_at: number | null;
   completed_at: number | null;
-  status: 'pending' | 'active' | 'completed';
+  status?: string; // Phase has no status in the workflow — kept for backward compat
   approval_required: number;
   approved_by: string | null;
   approved_at: number | null;

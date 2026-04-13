@@ -289,8 +289,22 @@ export function startServer() {
     return c.json(result);
   });
   app.delete('/steps/:id', async (c) => {
-    // Soft delete: cancelled + 사유 코멘트 (의사결정 이력 보존)
     const id = c.req.param('id');
+    const step = steps.get(id);
+    if (!step) return c.json({ error: 'Step not found' }, 404);
+
+    // Only todo steps under draft plans can be hard-deleted
+    if (step.status === 'todo') {
+      const phase = phases.get(step.phase_id);
+      const plan = phase ? plans.get(phase.plan_id) : null;
+      if (plan && plan.status === 'draft') {
+        steps.delete(id);
+        broadcastEvent('step:deleted', { id });
+        return c.json({ deleted: id });
+      }
+    }
+
+    // Otherwise: soft delete (cancelled + comment)
     const body = await c.req.json().catch(() => ({}));
     const reason = body.reason || 'Cancelled via delete';
     const result = steps.update(id, { status: 'cancelled' });

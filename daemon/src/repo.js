@@ -191,31 +191,14 @@ export const phases = {
   },
   update(id, fields) {
     const db = getDb();
-    if ('status' in fields) {
-      const VALID = new Set(['pending', 'active', 'completed']);
-      if (!VALID.has(fields.status)) {
-        throw Object.assign(new Error(`Invalid phase status: "${fields.status}". Valid: ${[...VALID].join(', ')}`), { status: 400 });
-      }
-    }
-    const allowed = ['title', 'goal', 'status', 'approval_required'];
+    // Phase has no status — it's a pure grouping entity. Only title/goal are editable.
+    const allowed = ['title', 'goal'];
     const sets = [];
     const vals = [];
     for (const k of allowed) {
       if (k in fields) {
         sets.push(`${k} = ?`);
-        vals.push(k === 'approval_required' ? (fields[k] ? 1 : 0) : fields[k]);
-      }
-    }
-    if ('status' in fields) {
-      if (fields.status === 'active') { sets.push('started_at = COALESCE(started_at, ?)'); vals.push(now()); }
-      if (fields.status === 'completed') {
-        // Block completion if any step is still todo/in_progress
-        const phaseSteps = steps.list({ phase_id: id });
-        const hasIncomplete = phaseSteps.some(s => s.status === 'todo' || s.status === 'in_progress');
-        if (hasIncomplete) {
-          throw Object.assign(new Error(`Cannot complete phase: ${phaseSteps.filter(s => s.status === 'todo' || s.status === 'in_progress').length} step(s) still incomplete`), { status: 400 });
-        }
-        sets.push('completed_at = ?'); vals.push(now());
+        vals.push(fields[k]);
       }
     }
     if (sets.length === 0) return phases.get(id);
@@ -263,22 +246,6 @@ export const questions = {
 };
 
 // -------- Steps --------
-/** Auto-activate phase & plan when step is created or started under completed/pending ancestors */
-function _autoActivateAncestors(db, phase_id) {
-  const phase = db.prepare('SELECT * FROM phases WHERE id = ?').get(phase_id);
-  if (!phase) return;
-  // Activate phase if not active
-  if (phase.status === 'completed' || phase.status === 'pending') {
-    const ts = now();
-    db.prepare(`UPDATE phases SET status = 'active', started_at = COALESCE(started_at, ?) WHERE id = ?`).run(ts, phase_id);
-  }
-  // Activate plan only if it was completed (re-open). Draft/approved require explicit approval flow.
-  const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(phase.plan_id);
-  if (plan && plan.status === 'completed') {
-    db.prepare(`UPDATE plans SET status = 'active' WHERE id = ?`).run(phase.plan_id);
-  }
-}
-
 export const steps = {
   /** Resolve project key for a step by traversing phase -> plan -> project. */
   _resolveProjectKey(db, phase_id) {
@@ -368,9 +335,6 @@ export const steps = {
       for (const dep of depends_on) insDep.run(id, dep);
     });
     tx();
-
-    // Auto-activate phase & plan when a new step is created under completed/pending phase/plan
-    _autoActivateAncestors(db, phase_id);
 
     return steps.get(id);
   },
@@ -484,54 +448,27 @@ export const steps = {
       }
     }
 
-    // Auto-activate phase & plan when step becomes in_progress
+    // Enforce: in_progress requires active plan + active bolt
     if ('status' in fields && fields.status === 'in_progress') {
       const updatedStep = steps.get(id);
       if (updatedStep) {
-        _autoActivateAncestors(db, updatedStep.phase_id);
-        // Auto-activate bolt if completed
+        // Check plan is active
+        const phase = phases.get(updatedStep.phase_id);
+        if (phase) {
+          const plan = plans.get(phase.plan_id);
+          if (plan && plan.status !== 'active') {
+            throw Object.assign(new Error(
+              `Cannot start step: plan "${plan.title}" is ${plan.status}. Approve it first: lattice plan approve ${plan.id}`
+            ), { status: 400 });
+          }
+        }
+        // Check bolt is active
         if (updatedStep.bolt_id) {
           const bolt = bolts.get(updatedStep.bolt_id);
-          if (bolt && bolt.status === 'completed') {
-            bolts.update(updatedStep.bolt_id, { status: 'active' });
-          }
-        }
-      }
-    }
-
-    // Auto-complete phase & plan if ALL steps are terminal
-    if ('status' in fields && ['done', 'cancelled'].includes(fields.status)) {
-      const updatedStep = steps.get(id);
-      if (updatedStep) {
-        const phaseSteps = steps.list({ phase_id: updatedStep.phase_id });
-        const terminalStatuses = new Set(['done', 'cancelled']);
-        const allDone = phaseSteps.every(s => terminalStatuses.has(s.status));
-        if (allDone && phaseSteps.length > 0) {
-          const phase = phases.get(updatedStep.phase_id);
-          if (phase && phase.status !== 'completed') {
-            phases.update(updatedStep.phase_id, { status: 'completed' });
-          }
-          // Auto-complete plan if ALL phases are completed
-          if (phase) {
-            const planPhases = phases.list({ plan_id: phase.plan_id });
-            const allPhasesCompleted = planPhases.every(p => p.status === 'completed');
-            if (allPhasesCompleted && planPhases.length > 0) {
-              const plan = plans.get(phase.plan_id);
-              if (plan && plan.status !== 'completed') {
-                plans.update(phase.plan_id, { status: 'completed' });
-              }
-            }
-          }
-        }
-        // Auto-complete bolt if ALL its steps are terminal
-        if (updatedStep.bolt_id) {
-          const boltSteps = steps.list({ bolt_id: updatedStep.bolt_id });
-          const allBoltDone = boltSteps.every(s => terminalStatuses.has(s.status));
-          if (allBoltDone && boltSteps.length > 0) {
-            const bolt = bolts.get(updatedStep.bolt_id);
-            if (bolt && bolt.status !== 'completed') {
-              bolts.update(updatedStep.bolt_id, { status: 'completed' });
-            }
+          if (bolt && bolt.status !== 'active') {
+            throw Object.assign(new Error(
+              `Cannot start step: bolt "${bolt.title}" is ${bolt.status}. Activate it first: lattice bolt activate ${bolt.id}`
+            ), { status: 400 });
           }
         }
       }
@@ -683,8 +620,15 @@ export const bolts = {
       if (k in fields) { sets.push(`${k} = ?`); vals.push(fields[k]); }
     }
     if ('status' in fields) {
+      // Completed bolts cannot be restarted — create a new bolt instead
+      const currentBolt = bolts.get(id);
+      if (currentBolt && currentBolt.status === 'completed' && fields.status !== 'completed') {
+        throw Object.assign(new Error(
+          `Bolt "${currentBolt.title}" is completed and cannot be restarted. Create a new bolt instead.`
+        ), { status: 400 });
+      }
       if (fields.status === 'active') { sets.push('started_at = COALESCE(started_at, ?)'); vals.push(now()); }
-      if (['review', 'completed'].includes(fields.status)) { sets.push('ended_at = ?'); vals.push(now()); }
+      if (fields.status === 'completed') { sets.push('ended_at = ?'); vals.push(now()); }
     }
     if (sets.length === 0) return bolts.get(id);
     vals.push(id);

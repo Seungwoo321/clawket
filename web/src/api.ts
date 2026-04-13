@@ -233,7 +233,7 @@ export function createPhase(data: {
 
 export function updatePhase(
   id: string,
-  data: Partial<Pick<Phase, 'title' | 'goal' | 'status' | 'approval_required'>>,
+  data: Partial<Pick<Phase, 'title' | 'goal'>>,
 ): Promise<Phase> {
   return patch(`/phases/${encodeURIComponent(id)}`, data);
 }
