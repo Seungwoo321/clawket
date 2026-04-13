@@ -77,7 +77,16 @@ function ensureMigrated(db) {
   for (const m of migrations) {
     if (m.version > currentVersion) {
       const sql = readFileSync(join(MIGRATIONS_DIR, m.file), 'utf8');
-      db.exec(sql);
+      try {
+        db.exec(sql);
+      } catch (err) {
+        // Handle partial migrations (e.g. ALTER TABLE succeeded but version insert failed)
+        if (err.message.includes('duplicate column')) {
+          db.prepare(`INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)`).run(m.version, Date.now());
+        } else {
+          throw err;
+        }
+      }
     }
   }
 }
