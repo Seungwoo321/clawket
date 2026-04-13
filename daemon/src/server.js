@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { writeFileSync, unlinkSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, extname, basename } from 'node:path';
+import { join, resolve, relative, extname, basename } from 'node:path';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { getRequestListener, serve } from '@hono/node-server';
@@ -944,12 +944,12 @@ export function startServer() {
     const projectId = c.req.query('project_id') || null;
     if (!cwd || !filePath) return c.json({ error: 'cwd and path required' }, 400);
 
-    const full = require('path').resolve(cwd, filePath);
+    const full = resolve(cwd, filePath);
     // Security: ensure resolved path is within cwd or any configured wiki_path
     const project = projectId ? projects.get(projectId) : null;
     const wikiPaths = project?.wiki_paths || ['docs'];
     const allowedRoots = [cwd, ...wikiPaths.map(wp => wp.startsWith('/') ? wp : join(cwd, wp))];
-    const isAllowed = allowedRoots.some(root => full.startsWith(require('path').resolve(root)));
+    const isAllowed = allowedRoots.some(root => full.startsWith(resolve(root)));
     if (!isAllowed) return c.json({ error: 'path outside allowed wiki roots' }, 403);
     if (!existsSync(full)) return c.json({ error: 'file not found' }, 404);
 
