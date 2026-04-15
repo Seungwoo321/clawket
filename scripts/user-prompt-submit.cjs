@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Lattice UserPromptSubmit hook: inject active step context every turn.
+// Clawket UserPromptSubmit hook: inject active task context every turn.
 const { execSync } = require('child_process');
 const { resolve, dirname } = require('path');
 
 const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || resolve(dirname(__filename), '..');
-const LATTICE = process.env.LATTICE_BIN || resolve(pluginRoot, 'bin', 'lattice');
+const CLAWKET = process.env.CLAWKET_BIN || resolve(pluginRoot, 'bin', 'clawket');
 
 function exec(cmd) {
   try { return execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim(); }
@@ -26,44 +26,44 @@ try {
 const cwd = hookInput.cwd || process.env.HOOK_CWD || process.cwd();
 
 // Fetch active steps
-const context = exec(`${LATTICE} dashboard --cwd "${cwd}" --show active`);
+const context = exec(`${CLAWKET} dashboard --cwd "${cwd}" --show active`);
 
 if (!context) {
-  // No lattice project — pass through
+  // No clawket project — pass through
   console.log(JSON.stringify({}));
   process.exit(0);
 }
 
-// Parse in_progress steps
-const inProgressSteps = [];
+// Parse in_progress tasks
+const inProgressTasks = [];
 for (const line of context.split('\n')) {
-  const match = line.match(/^\s*\[>\]\s+(.+?)\s+\(STEP-(\S+)\)\s*(.*)$/);
+  const match = line.match(/^\s*\[>\]\s+(.+?)\s+\(TASK-(\S+)\)\s*(.*)$/);
   if (match) {
-    inProgressSteps.push({
+    inProgressTasks.push({
       title: match[1].trim(),
-      id: `STEP-${match[2]}`,
+      id: `TASK-${match[2]}`,
       meta: match[3].trim(),
     });
   }
 }
 
-if (inProgressSteps.length > 0) {
-  const stepList = inProgressSteps
+if (inProgressTasks.length > 0) {
+  const taskList = inProgressTasks
     .map(s => `- [${s.id}] ${s.title}${s.meta ? ` (${s.meta})` : ''}`)
     .join('\n');
 
   console.log(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: `# Active Lattice Steps\n${stepList}`,
+      additionalContext: `# Active Clawket Tasks\n${taskList}`,
     },
   }));
 } else {
-  // No active steps — warn via context (UserPromptSubmit cannot block)
+  // No active tasks — warn via context (UserPromptSubmit cannot block)
   console.log(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: '# Lattice: 활성 스텝 없음 — 작업 전 스텝 등록 필요',
+      additionalContext: '# Clawket: 활성 태스크 없음 — 작업 전 태스크 등록 필요',
     },
   }));
 }

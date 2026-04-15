@@ -15,7 +15,7 @@ cd "$ROOT/cli" && cargo build --release
 
 echo "=== Copying CLI binary ==="
 mkdir -p "$ROOT/bin"
-cp "$ROOT/cli/target/release/lattice" "$ROOT/bin/lattice"
-chmod +x "$ROOT/bin/lattice"
+cp "$ROOT/cli/target/release/clawket" "$ROOT/bin/clawket"
+chmod +x "$ROOT/bin/clawket"
 
 echo "=== Done ==="

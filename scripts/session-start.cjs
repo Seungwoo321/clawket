@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Lattice SessionStart hook: ensure daemon running + inject dashboard context + rules.
+// Clawket SessionStart hook: ensure daemon running + inject dashboard context + rules.
 const { execSync } = require('child_process');
 const { readFileSync } = require('fs');
 const { resolve, dirname } = require('path');
 
 const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || resolve(dirname(__filename), '..');
-const LATTICE = process.env.LATTICE_BIN || resolve(pluginRoot, 'bin', 'lattice');
+const CLAWKET = process.env.CLAWKET_BIN || resolve(pluginRoot, 'bin', 'clawket');
 
 const C = {
   reset: '\x1b[0m',
@@ -29,7 +29,7 @@ function ensureDeps() {
   const nodeModules = resolve(daemonDir, 'node_modules');
   const { existsSync, writeFileSync } = require('fs');
   if (existsSync(resolve(daemonDir, 'package.json')) && !existsSync(nodeModules)) {
-    process.stderr.write(`[lattice] Installing daemon dependencies...\n`);
+    process.stderr.write(`[clawket] Installing daemon dependencies...\n`);
     // Ensure .npmrc exists for flat node_modules (dotfiles may not be copied to plugin cache)
     const npmrc = resolve(daemonDir, '.npmrc');
     if (!existsSync(npmrc)) {
@@ -38,13 +38,13 @@ function ensureDeps() {
     try {
       execSync('pnpm --version', { stdio: 'pipe' });
       execSync('pnpm install --prod', { cwd: daemonDir, stdio: ['pipe', 'pipe', process.stderr], timeout: 120000 });
-      process.stderr.write(`[lattice] Dependencies installed (pnpm)\n`);
+      process.stderr.write(`[clawket] Dependencies installed (pnpm)\n`);
     } catch {
       try {
         execSync('npm install --production', { cwd: daemonDir, stdio: ['pipe', 'pipe', process.stderr], timeout: 120000 });
-        process.stderr.write(`[lattice] Dependencies installed (npm)\n`);
+        process.stderr.write(`[clawket] Dependencies installed (npm)\n`);
       } catch (e) {
-        process.stderr.write(`[lattice] ERROR: Failed to install dependencies: ${e.message}\n`);
+        process.stderr.write(`[clawket] ERROR: Failed to install dependencies: ${e.message}\n`);
       }
     }
   }
@@ -52,11 +52,11 @@ function ensureDeps() {
 
 function ensureDaemon() {
   ensureDeps();
-  const status = exec(`${LATTICE} daemon status`);
+  const status = exec(`${CLAWKET} daemon status`);
   if (!status.includes('running')) {
-    exec(`${LATTICE} daemon start`);
+    exec(`${CLAWKET} daemon start`);
     for (let i = 0; i < 5; i++) {
-      if (exec(`${LATTICE} daemon status`).includes('running')) return;
+      if (exec(`${CLAWKET} daemon status`).includes('running')) return;
       execSync('sleep 0.5');
     }
   }
@@ -67,26 +67,26 @@ function buildSummary(context) {
   const inProg = (context.match(/^\s*\[>\]/gm) || []).length;
   const todo = (context.match(/^\s*\[ \]/gm) || []).length;
   const blocked = (context.match(/^\s*\[!\]/gm) || []).length;
-  const activePhases = (context.match(/— active/g) || []).length;
+  const activeUnits = (context.match(/— active/g) || []).length;
 
   const firstLine = context.split('\n')[0].replace(/^#\s*/, '').trim();
   const name = firstLine.length > 55 ? firstLine.slice(0, 52) + '...' : firstLine;
 
   const lines = [];
-  lines.push(`${C.bold}${C.cyan}Lattice${C.reset} ${C.dim}${name}${C.reset}`);
+  lines.push(`${C.bold}${C.cyan}Clawket${C.reset} ${C.dim}${name}${C.reset}`);
   lines.push(
     `${C.green}✓ ${done} done${C.reset}  ` +
     `${C.yellow}◐ ${inProg} active${C.reset}  ` +
     `${C.blue}○ ${todo} todo${C.reset}  ` +
     (blocked > 0 ? `${C.red}⊘ ${blocked} blocked${C.reset}  ` : '') +
-    `${C.gray}(${activePhases} active phase)${C.reset}`
+    `${C.gray}(${activeUnits} active unit)${C.reset}`
   );
 
-  // 1. In-progress steps (이어서 할 것) — Phase 목록에서만 수집, 특수 섹션 제외
+  // 1. In-progress tasks (이어서 할 것) — Unit 목록에서만 수집, 특수 섹션 제외
   const contextLines = context.split('\n');
-  let currentPhase = '';
+  let currentUnit = '';
   let inSpecialSection = false;
-  const inProgressSteps = [];
+  const inProgressTasks = [];
   const seen = new Set();
 
   for (const line of contextLines) {
@@ -94,22 +94,22 @@ function buildSummary(context) {
       inSpecialSection = true;
     } else if (line.startsWith('## ')) {
       inSpecialSection = false;
-      currentPhase = line.replace(/^## /, '').replace(/\s*\(PHASE-.*$/, '').trim();
+      currentUnit = line.replace(/^## /, '').replace(/\s*\(UNIT-.*$/, '').trim();
     }
     if (inSpecialSection) continue;
 
-    const progMatch = line.match(/^\s*\[>\] (.+?) \(STEP-/);
+    const progMatch = line.match(/^\s*\[>\] (.+?) \(TASK-/);
     if (progMatch && !seen.has(progMatch[1])) {
       seen.add(progMatch[1]);
-      inProgressSteps.push({ title: progMatch[1], phase: currentPhase });
+      inProgressTasks.push({ title: progMatch[1], unit: currentUnit });
     }
   }
 
-  if (inProgressSteps.length > 0) {
+  if (inProgressTasks.length > 0) {
     lines.push('');
     lines.push(`  ${C.bold}In Progress${C.reset}`);
-    for (const s of inProgressSteps) {
-      lines.push(`    ${C.yellow}◐${C.reset} ${C.dim}${s.phase}${C.reset} ${s.title}`);
+    for (const s of inProgressTasks) {
+      lines.push(`    ${C.yellow}◐${C.reset} ${C.dim}${s.unit}${C.reset} ${s.title}`);
     }
   }
 
@@ -149,7 +149,7 @@ try {
 // Resolve web URL once
 function getWebUrl() {
   try {
-    const portFile = require('path').join(require('os').homedir(), '.cache', 'lattice', 'latticed.port');
+    const portFile = require('path').join(require('os').homedir(), '.cache', 'clawket', 'clawketd.port');
     const port = readFileSync(portFile, 'utf-8').trim();
     return `http://localhost:${port}`;
   } catch { return ''; }
@@ -160,17 +160,17 @@ ensureDaemon();
 const cwd = process.env.HOOK_CWD || process.cwd();
 
 // Full context for Claude (show=all)
-const context = exec(`${LATTICE} dashboard --cwd "${cwd}" --show all`);
+const context = exec(`${CLAWKET} dashboard --cwd "${cwd}" --show all`);
 const webUrl = getWebUrl();
 
 if (!context) {
-  const noProjectMsg = `Lattice: No project registered for this directory.\nRun: lattice project new "<name>" --cwd "${cwd}"`;
+  const noProjectMsg = `Clawket: No project registered for this directory.\nRun: clawket project new "<name>" --cwd "${cwd}"`;
   const statusLine = webUrl
     ? `  ${C.dim}Web: ${C.reset}${C.cyan}${webUrl}${C.reset}`
     : '';
   console.log(JSON.stringify({
     hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: noProjectMsg + (rules ? '\n\n' + rules : '') },
-    systemMessage: `${C.cyan}Lattice${C.reset} ${C.dim}active${C.reset} ${C.yellow}— no project for this directory${C.reset}` + (statusLine ? '\n' + statusLine : '')
+    systemMessage: `${C.cyan}Clawket${C.reset} ${C.dim}active${C.reset} ${C.yellow}— no project for this directory${C.reset}` + (statusLine ? '\n' + statusLine : '')
   }));
   process.exit(0);
 }

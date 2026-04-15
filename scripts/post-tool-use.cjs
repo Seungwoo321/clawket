@@ -1,15 +1,13 @@
 #!/usr/bin/env node
-// Lattice PostToolUse hook: record file modifications.
+// Clawket PostToolUse hook: record file modifications and agent activity.
 // Reads hook input from stdin (consistent with other hooks).
-// If active Run exists → append to step body.
-// If no Run → record to activity_log via API.
 const { execSync } = require('child_process');
 const { resolve, dirname, join } = require('path');
 const { readFileSync } = require('fs');
 const http = require('http');
 
 const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || resolve(dirname(__filename), '..');
-const LATTICE = process.env.LATTICE_BIN || resolve(pluginRoot, 'bin', 'lattice');
+const CLAWKET = process.env.CLAWKET_BIN || resolve(pluginRoot, 'bin', 'clawket');
 const sessionId = process.env.CLAUDE_SESSION_ID || '';
 
 // Read hook input from stdin
@@ -24,51 +22,68 @@ try {
   hookInput = JSON.parse(Buffer.concat(chunks).toString());
 } catch { /* ignore */ }
 
-const toolName = hookInput.tool_name || process.env.HOOK_TOOL_NAME || '';
+const toolName = hookInput.tool_name || '';
 const toolInput = hookInput.tool_input || {};
+const toolResponse = hookInput.tool_response || {};
 
-// Only record file modifications
-if (toolName !== 'Edit' && toolName !== 'Write') process.exit(0);
-
-const filePath = toolInput.file_path || '';
-if (!filePath || !sessionId) process.exit(0);
 
 function exec(cmd) {
   try { return execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim(); }
   catch { return ''; }
 }
 
-// Try to find active run for this session
-try {
-  const runsJson = exec(`${LATTICE} run list --session-id "${sessionId}"`);
-  const runs = JSON.parse(runsJson || '[]');
-  const activeRun = runs.find(r => !r.ended_at);
+function getPort() {
+  try {
+    return readFileSync(join(require('os').homedir(), '.cache', 'clawket', 'clawketd.port'), 'utf-8').trim();
+  } catch { return null; }
+}
 
-  if (activeRun) {
-    // Append to step body
-    exec(`${LATTICE} step append-body "${activeRun.step_id}" --text "\n[${toolName}] ${filePath}"`);
-  } else {
-    // No active run — record to activity_log via API
-    let port;
-    try {
-      const portFile = join(require('os').homedir(), '.cache', 'lattice', 'latticed.port');
-      port = readFileSync(portFile, 'utf-8').trim();
-    } catch { process.exit(0); }
-
-    const payload = JSON.stringify({
-      entity_type: 'step',
-      entity_id: 'session',
-      action: 'updated',
-      field: 'file_edit',
-      new_value: `[${toolName}] ${filePath}`,
-      actor: 'main',
-    });
-    const req = http.request(`http://127.0.0.1:${port}/activity`, {
+function apiPost(port, path, body) {
+  return new Promise((resolve) => {
+    const payload = JSON.stringify(body);
+    const req = http.request(`http://127.0.0.1:${port}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+    }, (res) => {
+      let data = '';
+      res.on('data', (c) => data += c);
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
     });
-    req.on('error', () => {});
+    req.on('error', () => resolve(null));
     req.write(payload);
     req.end();
-  }
-} catch { /* ignore */ }
+  });
+}
+
+// ========== Edit/Write: record file modifications ==========
+if (toolName === 'Edit' || toolName === 'Write') {
+  const filePath = toolInput.file_path || '';
+  if (!filePath || !sessionId) process.exit(0);
+
+  try {
+    const runsJson = exec(`${CLAWKET} run list --session-id "${sessionId}"`);
+    const runs = JSON.parse(runsJson || '[]');
+    const activeRun = runs.find(r => !r.ended_at);
+
+    if (activeRun) {
+      exec(`${CLAWKET} task append-body "${activeRun.task_id}" --text "\n[${toolName}] ${filePath}"`);
+    } else {
+      const port = getPort();
+      if (port) {
+        apiPost(port, '/activity', {
+          entity_type: 'task',
+          entity_id: 'session',
+          action: 'updated',
+          field: 'file_edit',
+          new_value: `[${toolName}] ${filePath}`,
+          actor: 'main',
+        });
+      }
+    }
+  } catch { /* ignore */ }
+  process.exit(0);
+}
+
+// Agent/TeamCreate/SendMessage lifecycle is now handled by dedicated hooks:
+// - SubagentStart/SubagentStop for Agent tool
+// - TaskCreated/TaskCompleted for team agents
