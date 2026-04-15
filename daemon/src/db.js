@@ -54,6 +54,9 @@ function await_import_sqlite_vec() {
 }
 
 function ensureMigrated(db) {
+  // Temporarily disable FK checks during migrations (ALTER TABLE RENAME can violate FK constraints)
+  db.pragma('foreign_keys = OFF');
+
   const hasSchemaTable = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'")
     .get();
@@ -75,6 +78,9 @@ function ensureMigrated(db) {
     { version: 12, file: '012_project_enabled.sql' },
     { version: 13, file: '013_wiki_paths.sql' },
     { version: 14, file: '014_cleanup_statuses.sql' },
+    { version: 15, file: '015_phase_execution_mode.sql' },
+    { version: 16, file: '016_step_agent_id.sql' },
+    { version: 17, file: '017_clawket_rename.sql' },
   ];
   for (const m of migrations) {
     if (m.version > currentVersion) {
@@ -91,18 +97,21 @@ function ensureMigrated(db) {
       }
     }
   }
+
+  // Re-enable FK checks after migrations
+  db.pragma('foreign_keys = ON');
 }
 
 function ensureVectorTables(db) {
   try {
-    // Check if vec_steps already exists
-    const exists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='vec_steps'").get();
+    // Check if vec_tasks already exists
+    const exists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='vec_tasks'").get();
     if (!exists) {
-      db.exec(`CREATE VIRTUAL TABLE vec_steps USING vec0(step_id TEXT PRIMARY KEY, embedding float[384])`);
+      db.exec(`CREATE VIRTUAL TABLE vec_tasks USING vec0(task_id TEXT PRIMARY KEY, embedding float[384])`);
       db.exec(`CREATE VIRTUAL TABLE vec_artifacts USING vec0(artifact_id TEXT PRIMARY KEY, embedding float[384])`);
     }
   } catch (err) {
-    process.stderr.write(`[lattice-db] Vector table creation failed: ${err.message}\n`);
+    process.stderr.write(`[clawket-db] Vector table creation failed: ${err.message}\n`);
   }
 }
 
