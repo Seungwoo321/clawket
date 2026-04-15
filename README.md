@@ -6,19 +6,49 @@
 
 <p align="center">LLM-native work management plugin for <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a></p>
 
-Clawket is a structured state layer that replaces Jira + Confluence for LLM-driven development. It persists project plans, units, tasks, artifacts, and execution history across sessions via a local SQLite database and a lightweight daemon.
+Clawket is a structured state layer that replaces Jira + Confluence for LLM-driven development. It persists project plans, units, tasks, artifacts, and execution history across sessions via a local SQLite database and a lightweight daemon. Hook-based guardrails ensure Claude never works without a registered task — every action is tracked, every session has context.
+
+## Why Clawket
+
+Without structured state, Claude Code sessions are stateless:
+
+- **Context vanishes** — Each session starts from scratch. "Where was I?" has no answer.
+- **Work goes untracked** — No record of what Claude changed, when, or why.
+- **Plans become stale** — Plan Mode files sit in `~/.claude/plans/` and rot.
+- **Sub-agents are blind** — Parallel agents have no shared visibility into project state.
+
+Clawket fixes this with a persistent database, 6 lifecycle hooks, and a web dashboard — all running locally.
 
 ## Features
 
 - **Structured Workflow** — Project → Plan (approve) → Unit → Task → Cycle (activate)
-- **Cycle Iterations** — Sprint-like iteration management (AIDLC cycle support)
+- **Lifecycle Hooks** — 8 hook event types auto-track your entire work lifecycle
 - **Web Dashboard** — Summary, Plans, Board (Kanban), Backlog, Timeline, Wiki — 6 views
 - **Agent Swimlane Timeline** — Per-agent horizontal bar chart with concurrent work visualization
 - **Drag & Drop** — Kanban DnD for status changes, backlog DnD for cycle assignment
 - **Wiki** — File tree navigation with configurable paths, artifact versioning, local RAG
-- **Hook Enforcement** — Blocks work without active task, injects project context per session
+- **Hook Guardrails** — Blocks work without active task, injects project context per session
 - **Ticket Numbers** — Human-readable IDs (CK-1, CK-2) with token-optimized output
 - **CLI + Web** — Both LLM (CLI) and human (web UI) can manage all entities
+
+### Hooks
+
+| Hook | Trigger | What it does |
+|------|---------|-------------|
+| **SessionStart** | New session | Ensures daemon is running, injects project dashboard + rules |
+| **UserPromptSubmit** | Each prompt | Injects active task context, warns if no active task |
+| **PreToolUse** | Edit/Write/Bash/Agent | Blocks mutating tools unless an active task exists |
+| **PostToolUse** | Edit/Write | Records file modifications to the active task |
+| **PostToolUse** | ExitPlanMode | Prompts Claude to register Plan Mode output into Clawket |
+| **SubagentStart** | Sub-agent spawned | Binds the agent to its assigned Clawket task |
+| **SubagentStop** | Sub-agent finished | Appends result summary, auto-completes the task |
+| **Stop** | Session end | Closes all active runs for the session |
+
+When a task transitions to done/cancelled, the daemon auto-cascades completion to Unit, Plan, and Cycle if all their tasks are terminal.
+
+### Stack
+
+Rust CLI (~10ms cold start) + Node.js daemon + React dashboard + SQLite. Everything local, zero cloud dependency.
 
 ## Installation
 

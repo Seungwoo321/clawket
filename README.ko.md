@@ -6,31 +6,30 @@
 
 <p align="center"><a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a>용 LLM 네이티브 작업 관리 플러그인</p>
 
-Clawket은 LLM 기반 개발을 위한 구조화된 상태 레이어로, Jira + Confluence를 대체합니다. 프로젝트 계획, 유닛, 태스크, 산출물, 실행 이력을 로컬 SQLite 데이터베이스와 경량 데몬을 통해 세션 간 영구 보존합니다.
+Clawket은 LLM 기반 개발을 위한 구조화된 상태 레이어로, Jira + Confluence를 대체합니다. 프로젝트 계획, 유닛, 태스크, 산출물, 실행 이력을 로컬 SQLite 데이터베이스와 경량 데몬을 통해 세션 간 영구 보존합니다. 훅 기반 가드레일이 Claude가 등록된 태스크 없이 작업하지 못하게 보장합니다 — 모든 작업이 추적되고, 모든 세션이 컨텍스트를 가집니다.
+
+## 왜 Clawket인가
+
+구조화된 상태 레이어 없이 Claude Code 세션은 무상태(stateless)입니다:
+
+- **컨텍스트 소실** — 세션이 바뀌면 처음부터 시작. "어디까지 했더라?"에 답이 없음.
+- **작업 미추적** — Claude가 뭘 바꿨는지, 언제, 왜 바꿨는지 기록 없음.
+- **플랜 노후화** — Plan Mode 파일이 `~/.claude/plans/`에 방치됨.
+- **서브에이전트 단절** — 병렬 에이전트가 프로젝트 상태를 공유하지 못함.
+
+Clawket은 영구 데이터베이스, 6개 라이프사이클 훅, 웹 대시보드로 이 문제를 해결합니다 — 모두 로컬 실행.
 
 ## 주요 기능
 
-- **구조화된 작업 보드** — 프로젝트, 계획, 유닛, 태스크의 전체 CRUD
-- **사이클** — 스프린트 형태의 이터레이션 관리 (AIDLC 사이클 지원)
-- **사이클 자동 완료** — 사이클 내 모든 태스크 완료 시 자동 completed 전환
+- **구조화된 워크플로우** — Project → Plan (approve) → Unit → Task → Cycle (activate)
+- **라이프사이클 훅** — 8개 훅 이벤트로 전체 작업 라이프사이클 자동 추적
 - **웹 대시보드** — 요약, 계획, 보드(칸반), 백로그, 타임라인, 위키 6개 뷰
 - **에이전트 Swimlane 타임라인** — 에이전트별 수평 바 차트로 동시 작업 시각화
 - **드래그 앤 드롭** — 칸반 DnD로 상태 변경, 백로그 DnD로 사이클 배정
-- **인라인 편집** — Plans 뷰에서 Task 제목/상태 더블클릭 직접 편집
-- **프로젝트 설정** — Summary 뷰에서 프로젝트명, 설명, 작업 디렉토리 편집
-- **위키 파일 트리** — 폴더 기반 트리 내비게이션, heading 자동 추출 제목
-- **로컬 RAG** — Artifact scope (rag/reference/archive), sqlite-vec 임베딩, 하이브리드 검색
-- **Artifact 버전 관리** — content 수정 시 자동 스냅샷, 버전 이력 + 복원
-- **벡터 검색** — FTS5 키워드 + sqlite-vec 시맨틱 하이브리드 검색
-- **티켓 번호** — 내부 ULID와 함께 사람이 읽을 수 있는 ID (CK-1, CK-2)
-- **CLI 단축 명령어** — `clawket t` (task), `clawket cy` (cycle), `clawket u` (unit) 등
-- **자동 추론** — `task create` 시 현재 프로젝트에서 unit/cycle 자동 감지
-- **훅 통합** — 모든 Claude Code 세션에 프로젝트 컨텍스트 자동 주입
-- **태스크 등록 강제** — 활성 태스크 없이 작업 불가 (PreToolUse 훅)
-- **자동 상태 동기화** — Stop 훅에서 Unit/Plan/Cycle 완료 상태 자동 전환
-- **토큰 최적화** — done 태스크 숨김, ticket_number 사용 (-32% 토큰)
-- **고정 포트** — 데몬 포트 19400 고정 (CLAWKET_PORT로 변경 가능)
-- **라이트/다크 테마** — 영구 저장되는 테마 전환
+- **위키** — 폴더 기반 트리 내비게이션, 설정 가능한 경로, Artifact 버전 관리, 로컬 RAG
+- **훅 가드레일** — 활성 태스크 없이 작업 불가, 세션마다 프로젝트 컨텍스트 자동 주입
+- **티켓 번호** — 내부 ULID와 함께 사람이 읽을 수 있는 ID (CK-1, CK-2) + 토큰 최적화
+- **CLI + Web** — LLM(CLI)과 사람(웹 UI) 모두 모든 엔티티 관리 가능
 
 ## 아키텍처
 
@@ -104,11 +103,16 @@ Clawket은 다음 Claude Code 훅을 설치합니다:
 
 | 훅 | 트리거 | 용도 |
 |----|--------|------|
-| **SessionStart** | 세션 시작 | 데몬 시작, 대시보드 컨텍스트 + 규칙 주입 |
+| **SessionStart** | 세션 시작 | 데몬 시작 보장, 대시보드 컨텍스트 + 규칙 주입 |
 | **UserPromptSubmit** | 사용자 메시지마다 | 활성 태스크 컨텍스트 주입, 활성 태스크 없으면 경고 |
-| **PreToolUse** | Agent/Edit/Write/Bash 전 | 활성 태스크 없으면 작업 차단 |
-| **PostToolUse** | Edit/Write 후 | 파일 변경 사항을 활성 실행에 기록 |
-| **Stop** | 세션 종료 | 활성 실행 종료 + Unit/Plan/Cycle 상태 자동 동기화 |
+| **PreToolUse** | Agent/Edit/Write/Bash 전 | 활성 태스크 없으면 변경 작업 차단 |
+| **PostToolUse** | Edit/Write 후 | 파일 변경 사항을 활성 태스크에 기록 |
+| **PostToolUse** | ExitPlanMode 후 | Plan Mode 출력을 Clawket에 등록하도록 안내 |
+| **SubagentStart** | 서브에이전트 시작 | 에이전트를 배정된 Clawket 태스크에 바인딩 |
+| **SubagentStop** | 서브에이전트 종료 | 결과 요약 추가, 태스크 자동 완료 |
+| **Stop** | 세션 종료 | 해당 세션의 모든 활성 실행(Run) 종료 |
+
+태스크가 done/cancelled 상태로 전환되면, 데몬이 자동으로 Unit/Plan/Cycle 완료 상태를 cascade 처리합니다.
 
 ## 빠른 시작
 
