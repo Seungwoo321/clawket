@@ -22,7 +22,7 @@ Clawket은 영구 데이터베이스, 6개 라이프사이클 훅, 웹 대시보
 ## 주요 기능
 
 - **구조화된 워크플로우** — Project → Plan (approve) → Unit → Task → Cycle (activate)
-- **라이프사이클 훅** — 8개 훅 이벤트로 전체 작업 라이프사이클 자동 추적
+- **라이프사이클 훅** — 9개 이벤트 타입, 10개 훅으로 전체 작업 라이프사이클 자동 추적
 - **웹 대시보드** — 요약, 계획, 보드(칸반), 백로그, 타임라인, 위키 6개 뷰
 - **에이전트 Swimlane 타임라인** — 에이전트별 수평 바 차트로 동시 작업 시각화
 - **드래그 앤 드롭** — 칸반 DnD로 상태 변경, 백로그 DnD로 사이클 배정
@@ -110,6 +110,8 @@ Clawket은 다음 Claude Code 훅을 설치합니다:
 | **PostToolUse** | ExitPlanMode 후 | Plan Mode 출력을 Clawket에 등록하도록 안내 |
 | **SubagentStart** | 서브에이전트 시작 | 에이전트를 배정된 Clawket 태스크에 바인딩 |
 | **SubagentStop** | 서브에이전트 종료 | 결과 요약 추가, 태스크 자동 완료 |
+| **TaskCreated** | 팀 에이전트 태스크 생성 | 매칭되는 todo 태스크 자동 시작 (todo → in_progress) |
+| **TaskCompleted** | 팀 에이전트 태스크 완료 | 매칭되는 in_progress 태스크 자동 완료 (→ done) |
 | **Stop** | 세션 종료 | 해당 세션의 모든 활성 실행(Run) 종료 |
 
 태스크가 done/cancelled 상태로 전환되면, 데몬이 자동으로 Unit/Plan/Cycle 완료 상태를 cascade 처리합니다.

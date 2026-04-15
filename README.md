@@ -22,7 +22,7 @@ Clawket fixes this with a persistent database, 6 lifecycle hooks, and a web dash
 ## Features
 
 - **Structured Workflow** — Project → Plan (approve) → Unit → Task → Cycle (activate)
-- **Lifecycle Hooks** — 8 hook event types auto-track your entire work lifecycle
+- **Lifecycle Hooks** — 10 hooks across 9 event types auto-track your entire work lifecycle
 - **Web Dashboard** — Summary, Plans, Board (Kanban), Backlog, Timeline, Wiki — 6 views
 - **Agent Swimlane Timeline** — Per-agent horizontal bar chart with concurrent work visualization
 - **Drag & Drop** — Kanban DnD for status changes, backlog DnD for cycle assignment
@@ -42,6 +42,8 @@ Clawket fixes this with a persistent database, 6 lifecycle hooks, and a web dash
 | **PostToolUse** | ExitPlanMode | Prompts Claude to register Plan Mode output into Clawket |
 | **SubagentStart** | Sub-agent spawned | Binds the agent to its assigned Clawket task |
 | **SubagentStop** | Sub-agent finished | Appends result summary, auto-completes the task |
+| **TaskCreated** | Team agent task created | Auto-starts matching todo task (todo → in_progress) |
+| **TaskCompleted** | Team agent task completed | Auto-completes matching in_progress task (→ done) |
 | **Stop** | Session end | Closes all active runs for the session |
 
 When a task transitions to done/cancelled, the daemon auto-cascades completion to Unit, Plan, and Cycle if all their tasks are terminal.
