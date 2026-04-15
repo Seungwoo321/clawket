@@ -9,7 +9,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
-import type { Step, Bolt } from '../types';
+import type { Task, Cycle } from '../types';
 import { CLOSED_STATUSES } from '../types';
 import api from '../api';
 import { Button, Select } from './ui';
@@ -17,26 +17,26 @@ import StatusBadge from './StatusBadge';
 
 interface BacklogViewProps {
   projectId: string;
-  onSelectStep: (stepId: string) => void;
+  onSelectTask: (taskId: string) => void;
 }
 
-const priorityDotColor: Record<Step['priority'], string> = {
+const priorityDotColor: Record<Task['priority'], string> = {
   critical: 'bg-danger',
   high: 'bg-warning',
   medium: 'bg-primary',
   low: 'bg-muted',
 };
 
-export default function BacklogView({ projectId, onSelectStep }: BacklogViewProps) {
-  const [bolts, setBolts] = useState<Bolt[]>([]);
-  const [boltSteps, setBoltSteps] = useState<Record<string, Step[]>>({});
-  const [backlogSteps, setBacklogSteps] = useState<Step[]>([]);
+export default function BacklogView({ projectId, onSelectTask }: BacklogViewProps) {
+  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [cycleTasks, setCycleTasks] = useState<Record<string, Task[]>>({});
+  const [backlogTasks, setBacklogTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [assigningStepId, setAssigningStepId] = useState<string | null>(null);
-  const [collapsedBolts, setCollapsedBolts] = useState<Set<string>>(new Set());
+  const [assigningTaskId, setAssigningTaskId] = useState<string | null>(null);
+  const [collapsedCycles, setCollapsedCycles] = useState<Set<string>>(new Set());
   const [collapsedBacklog, setCollapsedBacklog] = useState(false);
-  const [activeStep, setActiveStep] = useState<Step | null>(null);
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -46,23 +46,23 @@ export default function BacklogView({ projectId, onSelectStep }: BacklogViewProp
     setLoading(true);
     setError(null);
     try {
-      const [boltList, backlog] = await Promise.all([
-        api.listBolts({ project_id: projectId }),
+      const [cycleList, backlog] = await Promise.all([
+        api.listCycles({ project_id: projectId }),
         api.listBacklog(projectId),
       ]);
-      setBolts(boltList);
-      setBacklogSteps(backlog);
+      setCycles(cycleList);
+      setBacklogTasks(backlog);
 
-      // Fetch steps for each non-completed bolt
-      const stepsMap: Record<string, Step[]> = {};
+      // Fetch tasks for each non-completed cycle
+      const tasksMap: Record<string, Task[]> = {};
       await Promise.all(
-        boltList
+        cycleList
           .filter(b => b.status !== 'completed')
           .map(async (b) => {
-            stepsMap[b.id] = await api.listBoltSteps(b.id);
+            tasksMap[b.id] = await api.listCycleTasks(b.id);
           }),
       );
-      setBoltSteps(stepsMap);
+      setCycleTasks(tasksMap);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
@@ -72,89 +72,89 @@ export default function BacklogView({ projectId, onSelectStep }: BacklogViewProp
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleAssignBolt(stepId: string, boltId: string) {
+  async function handleAssignCycle(taskId: string, cycleId: string) {
     try {
-      await api.updateStep(stepId, { bolt_id: boltId });
+      await api.updateTask(taskId, { cycle_id: cycleId });
       load();
     } catch (err) {
-      console.error('Failed to assign step to bolt:', err);
+      console.error('Failed to assign task to cycle:', err);
     }
   }
 
-  async function handleUnassign(stepId: string) {
+  async function handleUnassign(taskId: string) {
     try {
-      await api.updateStep(stepId, { bolt_id: null as unknown as string });
+      await api.updateTask(taskId, { cycle_id: null as unknown as string });
       load();
     } catch (err) {
-      console.error('Failed to unassign step:', err);
+      console.error('Failed to unassign task:', err);
     }
   }
 
-  async function handleBoltStatusChange(boltId: string, status: Bolt['status']) {
+  async function handleCycleStatusChange(cycleId: string, status: Cycle['status']) {
     try {
-      await api.updateBolt(boltId, { status });
+      await api.updateCycle(cycleId, { status });
       load();
     } catch (err) {
-      console.error('Failed to update bolt status:', err);
+      console.error('Failed to update cycle status:', err);
     }
   }
 
-  function toggleBolt(boltId: string) {
-    setCollapsedBolts(prev => {
+  function toggleCycle(cycleId: string) {
+    setCollapsedCycles(prev => {
       const next = new Set(prev);
-      if (next.has(boltId)) next.delete(boltId);
-      else next.add(boltId);
+      if (next.has(cycleId)) next.delete(cycleId);
+      else next.add(cycleId);
       return next;
     });
   }
 
-  // Find a step by id across all sections
-  function findStep(stepId: string): Step | null {
-    const backlog = backlogSteps.find(s => s.id === stepId);
+  // Find a task by id across all sections
+  function findTask(taskId: string): Task | null {
+    const backlog = backlogTasks.find(s => s.id === taskId);
     if (backlog) return backlog;
-    for (const steps of Object.values(boltSteps)) {
-      const found = steps.find(s => s.id === stepId);
+    for (const tasks of Object.values(cycleTasks)) {
+      const found = tasks.find(s => s.id === taskId);
       if (found) return found;
     }
     return null;
   }
 
   function handleDragStart(event: DragStartEvent) {
-    const step = findStep(event.active.id as string);
-    setActiveStep(step);
+    const task = findTask(event.active.id as string);
+    setActiveTask(task);
   }
 
   async function handleDragEnd(event: DragEndEvent) {
-    setActiveStep(null);
+    setActiveTask(null);
     const { active, over } = event;
     if (!over) return;
 
-    const stepId = active.id as string;
+    const taskId = active.id as string;
     const targetId = over.id as string;
 
-    // Determine current bolt_id of the step
-    const step = findStep(stepId);
-    if (!step) return;
+    // Determine current cycle_id of the task
+    const task = findTask(taskId);
+    if (!task) return;
 
-    const currentBoltId = step.bolt_id;
+    const currentCycleId = task.cycle_id;
 
     if (targetId === 'backlog') {
       // Move to backlog (unassign)
-      if (!currentBoltId) return; // already in backlog
+      if (!currentCycleId) return; // already in backlog
       try {
-        await api.updateStep(stepId, { bolt_id: null as unknown as string });
+        await api.updateTask(taskId, { cycle_id: null as unknown as string });
         await load();
       } catch (err) {
-        console.error('Failed to move step to backlog:', err);
+        console.error('Failed to move task to backlog:', err);
       }
     } else {
-      // Move to a bolt
-      if (currentBoltId === targetId) return; // already in this bolt
+      // Move to a cycle
+      if (currentCycleId === targetId) return; // already in this cycle
       try {
-        await api.updateStep(stepId, { bolt_id: targetId });
+        await api.updateTask(taskId, { cycle_id: targetId });
         await load();
       } catch (err) {
-        console.error('Failed to move step to bolt:', err);
+        console.error('Failed to move task to cycle:', err);
       }
     }
   }
@@ -166,7 +166,7 @@ export default function BacklogView({ projectId, onSelectStep }: BacklogViewProp
     return <div className="flex items-center justify-center py-12 text-danger">{error}</div>;
   }
 
-  const activeBolts = bolts.filter(b => b.status !== 'completed');
+  const activeCycles = cycles.filter(b => b.status !== 'completed');
 
   return (
     <DndContext
@@ -177,73 +177,73 @@ export default function BacklogView({ projectId, onSelectStep }: BacklogViewProp
       <div className="flex flex-col gap-2 p-4 overflow-y-auto h-full">
         <h2 className="text-lg font-semibold text-foreground mb-2">Backlog</h2>
 
-        {/* Bolt sections */}
-        {activeBolts.map((bolt) => {
-          const steps = boltSteps[bolt.id] || [];
-          const collapsed = collapsedBolts.has(bolt.id);
-          const doneCount = steps.filter(s => CLOSED_STATUSES.has(s.status)).length;
+        {/* Cycle sections */}
+        {activeCycles.map((cycle) => {
+          const tasks = cycleTasks[cycle.id] || [];
+          const collapsed = collapsedCycles.has(cycle.id);
+          const doneCount = tasks.filter(s => CLOSED_STATUSES.has(s.status)).length;
 
           return (
-            <DroppableSection key={bolt.id} id={bolt.id}>
+            <DroppableSection key={cycle.id} id={cycle.id}>
               {(isOver) => (
                 <div className={`rounded-lg border bg-surface overflow-hidden transition-colors ${isOver ? 'border-primary' : 'border-border'}`}>
-                  {/* Bolt header */}
+                  {/* Cycle header */}
                   <div className="flex items-center gap-3 px-4 py-3 bg-surface-high">
                     <button
-                      onClick={() => toggleBolt(bolt.id)}
+                      onClick={() => toggleCycle(cycle.id)}
                       className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
                     >
                       <span className="text-muted text-xs shrink-0">
                         {collapsed ? '\u25B6' : '\u25BC'}
                       </span>
                       <span className="text-sm font-semibold text-foreground truncate">
-                        {bolt.title}
+                        {cycle.title}
                       </span>
                       <span className="text-xs text-muted shrink-0">
-                        {doneCount}/{steps.length}
+                        {doneCount}/{tasks.length}
                       </span>
-                      <StatusBadge status={bolt.status} size="sm" />
+                      <StatusBadge status={cycle.status} size="sm" />
                     </button>
-                    {bolt.status === 'planning' && (
+                    {cycle.status === 'planning' && (
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={(e) => { e.stopPropagation(); handleBoltStatusChange(bolt.id, 'active'); }}
+                        onClick={(e) => { e.stopPropagation(); handleCycleStatusChange(cycle.id, 'active'); }}
                       >
-                        Start Bolt
+                        Start Cycle
                       </Button>
                     )}
-                    {bolt.status === 'active' && (
+                    {cycle.status === 'active' && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={(e) => { e.stopPropagation(); handleBoltStatusChange(bolt.id, 'completed'); }}
+                        onClick={(e) => { e.stopPropagation(); handleCycleStatusChange(cycle.id, 'completed'); }}
                       >
-                        End Bolt
+                        End Cycle
                       </Button>
                     )}
                   </div>
 
-                  {/* Bolt steps */}
+                  {/* Cycle tasks */}
                   {!collapsed && (
                     <div className="max-h-80 overflow-y-auto">
-                      {steps.length === 0 ? (
+                      {tasks.length === 0 ? (
                         <div className="px-4 py-3 text-sm text-muted italic">
-                          No steps in this bolt. Drag from backlog below.
+                          No tasks in this cycle. Drag from backlog below.
                         </div>
                       ) : (
-                        steps.map((step, i) => (
-                          <DraggableStepRow
-                            key={step.id}
-                            step={step}
+                        tasks.map((task, i) => (
+                          <DraggableTaskRow
+                            key={task.id}
+                            task={task}
                             showBorder={i > 0}
-                            onSelect={() => onSelectStep(step.id)}
+                            onSelect={() => onSelectTask(task.id)}
                             trailing={
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); handleUnassign(step.id); }}
+                                onClick={(e) => { e.stopPropagation(); handleUnassign(task.id); }}
                                 className="text-xs text-muted hover:text-danger px-1.5 py-0.5 rounded transition-colors cursor-pointer"
-                                title="Remove from bolt"
+                                title="Remove from cycle"
                               >
                                 &times;
                               </button>
@@ -259,7 +259,7 @@ export default function BacklogView({ projectId, onSelectStep }: BacklogViewProp
           );
         })}
 
-        {/* Backlog (unassigned) — same card style as bolt sections */}
+        {/* Backlog (unassigned) — same card style as cycle sections */}
         <DroppableSection id="backlog">
           {(isOver) => (
             <div className={`rounded-lg border bg-surface overflow-hidden mt-2 transition-colors ${isOver ? 'border-primary' : 'border-border'}`}>
@@ -275,51 +275,51 @@ export default function BacklogView({ projectId, onSelectStep }: BacklogViewProp
                     Backlog
                   </span>
                   <span className="text-xs text-muted shrink-0">
-                    {backlogSteps.length} items
+                    {backlogTasks.length} items
                   </span>
                 </button>
               </div>
 
               {!collapsedBacklog && (
                 <>
-                  {backlogSteps.length === 0 ? (
+                  {backlogTasks.length === 0 ? (
                     <div className="px-4 py-3 text-sm text-muted italic">
-                      All steps are assigned to bolts.
+                      All tasks are assigned to cycles.
                     </div>
                   ) : (
                     <div className="max-h-[60vh] overflow-y-auto">
-                      {backlogSteps.map((step, i) => (
-                        <DraggableStepRow
-                          key={step.id}
-                          step={step}
+                      {backlogTasks.map((task, i) => (
+                        <DraggableTaskRow
+                          key={task.id}
+                          task={task}
                           showBorder={i > 0}
-                          onSelect={() => onSelectStep(step.id)}
+                          onSelect={() => onSelectTask(task.id)}
                           trailing={
                             <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                              {assigningStepId === step.id ? (
+                              {assigningTaskId === task.id ? (
                                 <Select
                                   size="sm"
                                   value=""
                                   onChange={(e) => {
-                                    if (e.target.value) handleAssignBolt(step.id, e.target.value);
-                                    else setAssigningStepId(null);
+                                    if (e.target.value) handleAssignCycle(task.id, e.target.value);
+                                    else setAssigningTaskId(null);
                                   }}
-                                  onBlur={() => setAssigningStepId(null)}
+                                  onBlur={() => setAssigningTaskId(null)}
                                   autoFocus
                                   className="w-36 text-xs"
                                 >
-                                  <option value="">Select bolt...</option>
-                                  {activeBolts.map((b) => (
+                                  <option value="">Select cycle...</option>
+                                  {activeCycles.map((b) => (
                                     <option key={b.id} value={b.id}>{b.title}</option>
                                   ))}
                                 </Select>
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() => setAssigningStepId(step.id)}
+                                  onClick={() => setAssigningTaskId(task.id)}
                                   className="text-xs text-muted hover:text-primary px-2 py-1 rounded border border-transparent hover:border-border transition-colors whitespace-nowrap cursor-pointer"
                                 >
-                                  + Bolt
+                                  + Cycle
                                 </button>
                               )}
                             </div>
@@ -337,14 +337,14 @@ export default function BacklogView({ projectId, onSelectStep }: BacklogViewProp
 
       {/* Drag overlay */}
       <DragOverlay>
-        {activeStep ? (
+        {activeTask ? (
           <div className="flex items-center gap-3 px-4 py-2 bg-surface border border-primary rounded-lg shadow-lg opacity-90">
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${priorityDotColor[activeStep.priority]}`} />
-            {activeStep.ticket_number && (
-              <span className="font-mono text-xs text-muted shrink-0 w-16">{activeStep.ticket_number}</span>
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${priorityDotColor[activeTask.priority]}`} />
+            {activeTask.ticket_number && (
+              <span className="font-mono text-xs text-muted shrink-0 w-16">{activeTask.ticket_number}</span>
             )}
-            <span className="text-sm text-foreground truncate flex-1">{activeStep.title}</span>
-            <StatusBadge status={activeStep.status} size="sm" />
+            <span className="text-sm text-foreground truncate flex-1">{activeTask.title}</span>
+            <StatusBadge status={activeTask.status} size="sm" />
           </div>
         ) : null}
       </DragOverlay>
@@ -364,20 +364,20 @@ function DroppableSection({
   return <div ref={setNodeRef}>{children(isOver)}</div>;
 }
 
-/* --- Draggable step row --- */
-function DraggableStepRow({
-  step,
+/* --- Draggable task row --- */
+function DraggableTaskRow({
+  task,
   showBorder,
   onSelect,
   trailing,
 }: {
-  step: Step;
+  task: Task;
   showBorder: boolean;
   onSelect: () => void;
   trailing?: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: step.id,
+    id: task.id,
   });
 
   return (
@@ -392,14 +392,14 @@ function DraggableStepRow({
         onClick={onSelect}
         className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
       >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${priorityDotColor[step.priority]}`} />
-        {step.ticket_number && (
-          <span className="font-mono text-xs text-muted shrink-0 w-16">{step.ticket_number}</span>
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${priorityDotColor[task.priority]}`} />
+        {task.ticket_number && (
+          <span className="font-mono text-xs text-muted shrink-0 w-16">{task.ticket_number}</span>
         )}
-        <span className="text-sm text-foreground truncate flex-1">{step.title}</span>
-        <StatusBadge status={step.status} size="sm" />
-        {step.assignee && (
-          <span className="text-xs text-muted shrink-0">{step.assignee}</span>
+        <span className="text-sm text-foreground truncate flex-1">{task.title}</span>
+        <StatusBadge status={task.status} size="sm" />
+        {task.assignee && (
+          <span className="text-xs text-muted shrink-0">{task.assignee}</span>
         )}
       </button>
       {trailing}

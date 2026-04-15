@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Plan, Phase, Artifact, Question } from '../types';
+import type { Plan, Unit, Artifact, Question } from '../types';
 import api from '../api';
 import StatusBadge from './StatusBadge';
 import { Label } from './ui';
@@ -11,7 +11,7 @@ interface PlanDetailProps {
 
 export default function PlanDetail({ planId, onClose }: PlanDetailProps) {
   const [plan, setPlan] = useState<Plan | null>(null);
-  const [phases, setPhases] = useState<Phase[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,14 +19,14 @@ export default function PlanDetail({ planId, onClose }: PlanDetailProps) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, ph, a, q] = await Promise.all([
+      const [p, u, a, q] = await Promise.all([
         api.getPlan(planId),
-        api.listPhases({ plan_id: planId }),
+        api.listUnits({ plan_id: planId }),
         api.listArtifacts({ plan_id: planId }),
         api.listQuestions({ plan_id: planId }),
       ]);
       setPlan(p);
-      setPhases(ph.sort((a, b) => a.idx - b.idx));
+      setUnits(u.sort((a, b) => a.idx - b.idx));
       setArtifacts(a);
       setQuestions(q);
     } catch (err) {
@@ -96,18 +96,18 @@ export default function PlanDetail({ planId, onClose }: PlanDetailProps) {
           <div><span className="text-muted">Approved:</span> <span className="text-foreground">{formatTime(plan.approved_at)}</span></div>
         </div>
 
-        {/* Phases overview */}
+        {/* Units overview */}
         <div>
-          <Label>Phases ({phases.length})</Label>
-          {phases.length === 0 ? (
-            <div className="text-sm text-muted italic">No phases yet</div>
+          <Label>Units ({units.length})</Label>
+          {units.length === 0 ? (
+            <div className="text-sm text-muted italic">No units yet</div>
           ) : (
             <div className="space-y-1.5">
-              {phases.map((ph) => (
-                <div key={ph.id} className="flex items-center gap-2 bg-background border border-border rounded px-3 py-2">
-                  <span className="text-xs text-muted font-mono w-5">#{ph.idx + 1}</span>
-                  <span className="text-sm text-foreground truncate flex-1">{ph.title}</span>
-                  {/* Phase: no status */}
+              {units.map((u) => (
+                <div key={u.id} className="flex items-center gap-2 bg-background border border-border rounded px-3 py-2">
+                  <span className="text-xs text-muted font-mono w-5">#{u.idx + 1}</span>
+                  <span className="text-sm text-foreground truncate flex-1">{u.title}</span>
+                  {/* Unit: no status */}
                 </div>
               ))}
             </div>

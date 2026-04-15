@@ -4,11 +4,11 @@ import type { Project } from './types';
 import api from './api';
 import Sidebar from './components/Sidebar';
 import PlanTree from './components/PlanTree';
-import StepDetail from './components/StepDetail';
-import PhaseDetail from './components/PhaseDetail';
+import TaskDetail from './components/TaskDetail';
+import UnitDetail from './components/UnitDetail';
 import PlanDetail from './components/PlanDetail';
-import CreatePhaseModal from './components/CreatePhaseModal';
-import CreateStepModal from './components/CreateStepModal';
+import CreateUnitModal from './components/CreateUnitModal';
+import CreateTaskModal from './components/CreateTaskModal';
 import CreatePlanModal from './components/CreatePlanModal';
 import BoardView from './components/BoardView';
 import BacklogView from './components/BacklogView';
@@ -19,13 +19,13 @@ import WikiView from './components/WikiView';
 type ViewType = 'summary' | 'plans' | 'board' | 'backlog' | 'timeline' | 'wiki';
 type SelectedItem =
   | { type: 'plan'; id: string }
-  | { type: 'phase'; id: string }
-  | { type: 'step'; id: string };
+  | { type: 'unit'; id: string }
+  | { type: 'task'; id: string };
 
 /** Parse the current URL pathname into project + view + optional detail item.
  *  URL format: /{projectId}/{view}  or  /{projectId}/{view}/{type}/{id}
  *  Legacy:     /{view}  (no project — uses selected project)
- *  Examples: /PROJ-xxx/plans, /PROJ-xxx/board/step/STEP-xxx
+ *  Examples: /PROJ-xxx/plans, /PROJ-xxx/board/task/TASK-xxx
  */
 function parseLocation(pathname: string): { projectId: string | null; view: ViewType; item: SelectedItem | null } {
   const parts = pathname.split('/').filter(Boolean);
@@ -45,7 +45,7 @@ function parseLocation(pathname: string): { projectId: string | null; view: View
   // Detail: /{view}/{type}/{id}
   if (viewParts.length >= 3) {
     const [, type, id] = viewParts;
-    if (type === 'step' || type === 'phase' || type === 'plan') {
+    if (type === 'task' || type === 'unit' || type === 'plan') {
       return { projectId, view, item: { type, id } };
     }
   }
@@ -94,7 +94,7 @@ function App() {
 
   // Drawer resize state
   const [drawerWidth, setDrawerWidth] = useState(() => {
-    const saved = localStorage.getItem('lattice-drawer-width');
+    const saved = localStorage.getItem('clawket-drawer-width');
     return saved ? parseInt(saved, 10) : 520;
   });
   const isResizing = useRef(false);
@@ -110,7 +110,7 @@ function App() {
         isResizing.current = false;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        localStorage.setItem('lattice-drawer-width', String(drawerWidth));
+        localStorage.setItem('clawket-drawer-width', String(drawerWidth));
       }
     };
     window.addEventListener('mousemove', handleMouseMove);
@@ -129,8 +129,8 @@ function App() {
 
   // Modal state
   const [createPlanForProject, setCreatePlanForProject] = useState<string | null>(null);
-  const [createPhaseForPlan, setCreatePhaseForPlan] = useState<string | null>(null);
-  const [createStepForPhase, setCreateStepForPhase] = useState<string | null>(null);
+  const [createUnitForPlan, setCreateUnitForPlan] = useState<string | null>(null);
+  const [createTaskForUnit, setCreateTaskForUnit] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,7 +150,7 @@ function App() {
   useEffect(() => {
     const es = new EventSource('/events');
     const refresh = () => setTreeKey(k => k + 1);
-    for (const evt of ['step:created', 'step:updated', 'step:deleted', 'phase:updated', 'plan:updated', 'bolt:updated']) {
+    for (const evt of ['task:created', 'task:updated', 'task:deleted', 'unit:updated', 'plan:updated', 'cycle:updated']) {
       es.addEventListener(evt, refresh);
     }
     return () => es.close();
@@ -191,7 +191,7 @@ function App() {
               <SummaryView
                 key={`summary-${selectedProjectId}-${treeKey}`}
                 projectId={selectedProjectId}
-                onSelectStep={(id) => setSelectedItem({ type: 'step', id })}
+                onSelectTask={(id) => setSelectedItem({ type: 'task', id })}
               />
             )}
             {activeView === 'plans' && (
@@ -201,29 +201,29 @@ function App() {
                 selectedItem={selectedItem}
                 onSelectItem={setSelectedItem}
                 onCreatePlan={() => setCreatePlanForProject(selectedProjectId)}
-                onCreatePhase={setCreatePhaseForPlan}
-                onCreateStep={setCreateStepForPhase}
+                onCreateUnit={setCreateUnitForPlan}
+                onCreateTask={setCreateTaskForUnit}
               />
             )}
             {activeView === 'board' && (
               <BoardView
                 key={`board-${selectedProjectId}-${treeKey}`}
                 projectId={selectedProjectId}
-                onSelectStep={(id) => setSelectedItem({ type: 'step', id })}
+                onSelectTask={(id) => setSelectedItem({ type: 'task', id })}
               />
             )}
             {activeView === 'backlog' && (
               <BacklogView
                 key={`backlog-${selectedProjectId}-${treeKey}`}
                 projectId={selectedProjectId}
-                onSelectStep={(id) => setSelectedItem({ type: 'step', id })}
+                onSelectTask={(id) => setSelectedItem({ type: 'task', id })}
               />
             )}
             {activeView === 'timeline' && (
               <TimelineView
                 key={`timeline-${selectedProjectId}-${treeKey}`}
                 projectId={selectedProjectId}
-                onSelectStep={(id) => setSelectedItem({ type: 'step', id })}
+                onSelectTask={(id) => setSelectedItem({ type: 'task', id })}
               />
             )}
             {activeView === 'wiki' && (
@@ -233,7 +233,7 @@ function App() {
         ) : (
           <div className="flex-1 flex items-center justify-center text-muted">
             <div className="text-center">
-              <div className="text-2xl mb-2">Lattice</div>
+              <div className="text-2xl mb-2">Clawket</div>
               <div className="text-sm">Select a project to get started</div>
             </div>
           </div>
@@ -257,11 +257,11 @@ function App() {
               onMouseDown={startResize}
             />
             <div className="flex-1 min-w-0 h-full overflow-hidden">
-              {selectedItem.type === 'step' && (
-                <StepDetail stepId={selectedItem.id} projectId={selectedProjectId ?? undefined} onClose={() => setSelectedItem(null)} />
+              {selectedItem.type === 'task' && (
+                <TaskDetail taskId={selectedItem.id} projectId={selectedProjectId ?? undefined} onClose={() => setSelectedItem(null)} />
               )}
-              {selectedItem.type === 'phase' && (
-                <PhaseDetail phaseId={selectedItem.id} onClose={() => setSelectedItem(null)} />
+              {selectedItem.type === 'unit' && (
+                <UnitDetail unitId={selectedItem.id} onClose={() => setSelectedItem(null)} />
               )}
               {selectedItem.type === 'plan' && (
                 <PlanDetail planId={selectedItem.id} onClose={() => setSelectedItem(null)} />
@@ -279,17 +279,17 @@ function App() {
           onCreated={handleCreated}
         />
       )}
-      {createPhaseForPlan && (
-        <CreatePhaseModal
-          planId={createPhaseForPlan}
-          onClose={() => setCreatePhaseForPlan(null)}
+      {createUnitForPlan && (
+        <CreateUnitModal
+          planId={createUnitForPlan}
+          onClose={() => setCreateUnitForPlan(null)}
           onCreated={handleCreated}
         />
       )}
-      {createStepForPhase && (
-        <CreateStepModal
-          phaseId={createStepForPhase}
-          onClose={() => setCreateStepForPhase(null)}
+      {createTaskForUnit && (
+        <CreateTaskModal
+          unitId={createTaskForUnit}
+          onClose={() => setCreateTaskForUnit(null)}
           onCreated={handleCreated}
         />
       )}

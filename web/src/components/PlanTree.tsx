@@ -1,31 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Plan, Phase, Step, Bolt } from '../types';
+import type { Plan, Unit, Task, Cycle } from '../types';
 import { CLOSED_STATUSES } from '../types';
 import api from '../api';
 import { useInlineEdit } from '../hooks/useInlineEdit';
 import StatusBadge from './StatusBadge';
 import { Button, Select } from './ui';
 
-type SelectedItem = { type: 'plan'; id: string } | { type: 'phase'; id: string } | { type: 'step'; id: string };
+type SelectedItem = { type: 'plan'; id: string } | { type: 'unit'; id: string } | { type: 'task'; id: string };
 
 interface PlanTreeProps {
   projectId: string;
   selectedItem: SelectedItem | null;
   onSelectItem: (item: SelectedItem) => void;
   onCreatePlan: () => void;
-  onCreatePhase: (planId: string) => void;
-  onCreateStep: (phaseId: string) => void;
+  onCreateUnit: (planId: string) => void;
+  onCreateTask: (unitId: string) => void;
 }
 
-interface PhaseWithSteps extends Phase {
-  steps: Step[];
+interface UnitWithTasks extends Unit {
+  tasks: Task[];
 }
 
-interface PlanWithPhases extends Plan {
-  phases: PhaseWithSteps[];
+interface PlanWithUnits extends Plan {
+  units: UnitWithTasks[];
 }
 
-const stepStatusIcon: Record<Step['status'], { icon: string; color: string }> = {
+const taskStatusIcon: Record<Task['status'], { icon: string; color: string }> = {
   todo: { icon: '\u25CB', color: 'text-muted' },
   in_progress: { icon: '\u25D0', color: 'text-warning' },
   done: { icon: '\u25CF', color: 'text-success' },
@@ -33,14 +33,14 @@ const stepStatusIcon: Record<Step['status'], { icon: string; color: string }> = 
   cancelled: { icon: '\u2715', color: 'text-muted' },
 };
 
-const priorityDotColor: Record<Step['priority'], string> = {
+const priorityDotColor: Record<Task['priority'], string> = {
   critical: 'bg-danger',
   high: 'bg-warning',
   medium: 'bg-primary',
   low: 'bg-muted',
 };
 
-const STEP_STATUSES: { value: Step['status']; label: string }[] = [
+const TASK_STATUSES: { value: Task['status']; label: string }[] = [
   { value: 'todo', label: 'Todo' },
   { value: 'in_progress', label: 'In Progress' },
   { value: 'blocked', label: 'Blocked' },
@@ -48,22 +48,22 @@ const STEP_STATUSES: { value: Step['status']; label: string }[] = [
   { value: 'cancelled', label: 'Cancelled' },
 ];
 
-export default function PlanTree({ projectId, selectedItem, onSelectItem, onCreatePlan, onCreatePhase, onCreateStep }: PlanTreeProps) {
-  const [plans, setPlans] = useState<PlanWithPhases[]>([]);
+export default function PlanTree({ projectId, selectedItem, onSelectItem, onCreatePlan, onCreateUnit, onCreateTask }: PlanTreeProps) {
+  const [plans, setPlans] = useState<PlanWithUnits[]>([]);
   const [expandedPlans, setExpandedPlans] = useState<Set<string>>(new Set());
-  const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
+  const [expandedUnits, setExpandedUnits] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [refreshCounter, setRefreshCounter] = useState(0);
 
   // Edit mode state (bulk)
   const [editMode, setEditMode] = useState(false);
-  const [selectedStepIds, setSelectedStepIds] = useState<Set<string>>(new Set());
-  const [bolts, setBolts] = useState<Bolt[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [cycles, setCycles] = useState<Cycle[]>([]);
   const [bulkUpdating, setBulkUpdating] = useState(false);
 
   // Inline edit (custom hook)
-  const inlineEdit = useInlineEdit(async (stepId, field, value) => {
-    await api.updateStep(stepId, { [field]: value });
+  const inlineEdit = useInlineEdit(async (taskId, field, value) => {
+    await api.updateTask(taskId, { [field]: value });
     setRefreshCounter(c => c + 1);
   });
 
@@ -73,16 +73,16 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
       setLoading(true);
       try {
         const planList = await api.listPlans({ project_id: projectId });
-        const enriched: PlanWithPhases[] = await Promise.all(
+        const enriched: PlanWithUnits[] = await Promise.all(
           planList.map(async (plan) => {
-            const phases = await api.listPhases({ plan_id: plan.id });
-            const phasesWithSteps: PhaseWithSteps[] = await Promise.all(
-              phases.map(async (phase) => {
-                const steps = await api.listSteps({ phase_id: phase.id });
-                return { ...phase, steps: steps.sort((a, b) => a.idx - b.idx) };
+            const units = await api.listUnits({ plan_id: plan.id });
+            const unitsWithTasks: UnitWithTasks[] = await Promise.all(
+              units.map(async (unit) => {
+                const tasks = await api.listTasks({ unit_id: unit.id });
+                return { ...unit, tasks: tasks.sort((a, b) => a.idx - b.idx) };
               }),
             );
-            return { ...plan, phases: phasesWithSteps.sort((a, b) => a.idx - b.idx) };
+            return { ...plan, units: unitsWithTasks.sort((a, b) => a.idx - b.idx) };
           }),
         );
         if (!cancelled) {
@@ -90,7 +90,7 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
           // Auto-expand all plans on first load
           if (refreshCounter === 0) {
             setExpandedPlans(new Set(enriched.map((p) => p.id)));
-            setExpandedPhases(new Set(enriched.flatMap((p) => p.phases.map((ph) => ph.id))));
+            setExpandedUnits(new Set(enriched.flatMap((p) => p.units.map((u) => u.id))));
           }
         }
       } catch (err) {
@@ -103,10 +103,10 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
     return () => { cancelled = true; };
   }, [projectId, refreshCounter]);
 
-  // Fetch bolts when entering edit mode
+  // Fetch cycles when entering edit mode
   useEffect(() => {
     if (editMode) {
-      api.listBolts({ project_id: projectId }).then(setBolts).catch(() => setBolts([]));
+      api.listCycles({ project_id: projectId }).then(setCycles).catch(() => setCycles([]));
     }
   }, [editMode, projectId]);
 
@@ -119,8 +119,8 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
     });
   }
 
-  function togglePhase(id: string) {
-    setExpandedPhases((prev) => {
+  function toggleUnit(id: string) {
+    setExpandedUnits((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -131,46 +131,44 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
   // Edit mode helpers
   function enterEditMode() {
     setEditMode(true);
-    setSelectedStepIds(new Set());
+    setSelectedTaskIds(new Set());
   }
 
   function exitEditMode() {
     setEditMode(false);
-    setSelectedStepIds(new Set());
+    setSelectedTaskIds(new Set());
   }
 
-  function toggleStepSelection(stepId: string) {
-    setSelectedStepIds((prev) => {
+  function toggleTaskSelection(taskId: string) {
+    setSelectedTaskIds((prev) => {
       const next = new Set(prev);
-      if (next.has(stepId)) next.delete(stepId);
-      else next.add(stepId);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
       return next;
     });
   }
 
-  // inlineEdit.save and inlineEdit.cancel are now in useInlineEdit hook
-
-  const allStepIds = plans.flatMap((p) => p.phases.flatMap((ph) => ph.steps.map((s) => s.id)));
+  const allTaskIds = plans.flatMap((p) => p.units.flatMap((u) => u.tasks.map((s) => s.id)));
 
   function selectAll() {
-    setSelectedStepIds(new Set(allStepIds));
+    setSelectedTaskIds(new Set(allTaskIds));
   }
 
   function deselectAll() {
-    setSelectedStepIds(new Set());
+    setSelectedTaskIds(new Set());
   }
 
-  // Collect all phases for the phase-move dropdown
-  const allPhases = plans.flatMap((p) =>
-    p.phases.map((ph) => ({ id: ph.id, title: ph.title, planTitle: p.title })),
+  // Collect all units for the unit-move dropdown
+  const allUnits = plans.flatMap((p) =>
+    p.units.map((u) => ({ id: u.id, title: u.title, planTitle: p.title })),
   );
 
   const performBulkAction = useCallback(
-    async (fields: Partial<Pick<Step, 'status' | 'bolt_id' | 'phase_id'>>) => {
-      if (selectedStepIds.size === 0) return;
+    async (fields: Partial<Pick<Task, 'status' | 'cycle_id' | 'unit_id'>>) => {
+      if (selectedTaskIds.size === 0) return;
       setBulkUpdating(true);
       try {
-        await api.bulkUpdateSteps(Array.from(selectedStepIds), fields);
+        await api.bulkUpdateTasks(Array.from(selectedTaskIds), fields);
         exitEditMode();
         setRefreshCounter((c) => c + 1);
       } catch (err) {
@@ -179,7 +177,7 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
         setBulkUpdating(false);
       }
     },
-    [selectedStepIds],
+    [selectedTaskIds],
   );
 
   if (loading) {
@@ -270,44 +268,44 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
             </div>
             {!editMode && (
               <button
-                onClick={(e) => { e.stopPropagation(); onCreatePhase(plan.id); }}
+                onClick={(e) => { e.stopPropagation(); onCreateUnit(plan.id); }}
                 className="text-muted hover:text-primary text-xs shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
                 style={{ opacity: undefined }}
-                title="Add phase"
+                title="Add unit"
               >
                 +
               </button>
             )}
           </div>
 
-          {/* Phases */}
+          {/* Units */}
           {expandedPlans.has(plan.id) &&
-            plan.phases.map((phase) => {
-              const doneCount = phase.steps.filter((s) => CLOSED_STATUSES.has(s.status)).length;
-              const totalCount = phase.steps.length;
+            plan.units.map((unit) => {
+              const doneCount = unit.tasks.filter((s) => CLOSED_STATUSES.has(s.status)).length;
+              const totalCount = unit.tasks.length;
               const progress = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
 
               return (
-                <div key={phase.id}>
-                  {/* Phase row */}
+                <div key={unit.id}>
+                  {/* Unit row */}
                   <div
                     className={`flex items-center gap-2 px-4 py-1.5 pl-10 cursor-pointer hover:bg-surface-hover transition-colors ${
-                      selectedItem?.type === 'phase' && selectedItem.id === phase.id ? 'bg-primary/10' : ''
+                      selectedItem?.type === 'unit' && selectedItem.id === unit.id ? 'bg-primary/10' : ''
                     }`}
                   >
                     <button
-                      onClick={() => togglePhase(phase.id)}
+                      onClick={() => toggleUnit(unit.id)}
                       className="text-muted hover:text-foreground shrink-0 w-4 text-xs"
                     >
-                      {expandedPhases.has(phase.id) ? '\u25BC' : '\u25B6'}
+                      {expandedUnits.has(unit.id) ? '\u25BC' : '\u25B6'}
                     </button>
                     <div
                       className="flex-1 min-w-0 flex items-center gap-2"
-                      onClick={() => onSelectItem({ type: 'phase', id: phase.id })}
+                      onClick={() => onSelectItem({ type: 'unit', id: unit.id })}
                     >
-                      <span className="text-sm text-foreground truncate">{phase.title}</span>
-                      {/* Phase has no status — show step progress instead */}
-                      {phase.approved_at && (
+                      <span className="text-sm text-foreground truncate">{unit.title}</span>
+                      {/* Unit has no status — show task progress instead */}
+                      {unit.approved_at && (
                         <span className="text-xs text-success" title="Approved">{'\u2713'}</span>
                       )}
                     </div>
@@ -325,41 +323,41 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                     </div>
                     {!editMode && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); onCreateStep(phase.id); }}
+                        onClick={(e) => { e.stopPropagation(); onCreateTask(unit.id); }}
                         className="text-muted hover:text-primary text-xs shrink-0"
-                        title="Add step"
+                        title="Add task"
                       >
                         +
                       </button>
                     )}
                   </div>
 
-                  {/* Steps */}
-                  {expandedPhases.has(phase.id) &&
-                    phase.steps.map((step) => {
-                      const si = stepStatusIcon[step.status];
-                      const isSelected = selectedStepIds.has(step.id);
-                      const isInlineTitle = inlineEdit.editId === step.id && inlineEdit.editField === 'title';
-                      const isInlineStatus = inlineEdit.editId === step.id && inlineEdit.editField === 'status';
+                  {/* Tasks */}
+                  {expandedUnits.has(unit.id) &&
+                    unit.tasks.map((task) => {
+                      const si = taskStatusIcon[task.status];
+                      const isSelected = selectedTaskIds.has(task.id);
+                      const isInlineTitle = inlineEdit.editId === task.id && inlineEdit.editField === 'title';
+                      const isInlineStatus = inlineEdit.editId === task.id && inlineEdit.editField === 'status';
                       return (
                         <div
-                          key={step.id}
+                          key={task.id}
                           onClick={() => {
                             if (editMode) {
-                              toggleStepSelection(step.id);
+                              toggleTaskSelection(task.id);
                             } else if (!inlineEdit.editId) {
-                              onSelectItem({ type: 'step', id: step.id });
+                              onSelectItem({ type: 'task', id: task.id });
                             }
                           }}
                           className={`flex items-center gap-2 px-4 py-1.5 pl-16 cursor-pointer hover:bg-surface-hover transition-colors ${
-                            !editMode && selectedItem?.type === 'step' && selectedItem.id === step.id ? 'bg-primary/10' : ''
+                            !editMode && selectedItem?.type === 'task' && selectedItem.id === task.id ? 'bg-primary/10' : ''
                           } ${editMode && isSelected ? 'bg-primary/10' : ''}`}
                         >
                           {editMode && (
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              onChange={() => toggleStepSelection(step.id)}
+                              onChange={() => toggleTaskSelection(task.id)}
                               onClick={(e) => e.stopPropagation()}
                               className="shrink-0 w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
                             />
@@ -373,30 +371,30 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                               onClick={e => e.stopPropagation()}
                               onChange={async e => {
                                 inlineEdit.setEditValue(e.target.value);
-                                await api.updateStep(step.id, { status: e.target.value as Step['status'] });
+                                await api.updateTask(task.id, { status: e.target.value as Task['status'] });
                                 inlineEdit.cancel();
                                 setRefreshCounter(c => c + 1);
                               }}
                               onBlur={inlineEdit.cancel}
                               onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancel(); }}
                             >
-                              {STEP_STATUSES.map(s => (
+                              {TASK_STATUSES.map(s => (
                                 <option key={s.value} value={s.value}>{s.label}</option>
                               ))}
                             </select>
                           ) : (
                             <span
                               className={`${si.color} text-sm shrink-0 cursor-pointer`}
-                              title={`${step.status} — double-click to change`}
+                              title={`${task.status} — double-click to change`}
                               onDoubleClick={e => {
                                 e.stopPropagation();
-                                inlineEdit.start(step.id, 'status', step.status);
+                                inlineEdit.start(task.id, 'status', task.status);
                               }}
                             >{si.icon}</span>
                           )}
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${priorityDotColor[step.priority]}`} title={`Priority: ${step.priority}`} />
-                          <span className="text-xs text-muted font-mono shrink-0" title={step.id}>
-                            {step.ticket_number ?? `...${step.id.slice(-6)}`}
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${priorityDotColor[task.priority]}`} title={`Priority: ${task.priority}`} />
+                          <span className="text-xs text-muted font-mono shrink-0" title={task.id}>
+                            {task.ticket_number ?? `...${task.id.slice(-6)}`}
                           </span>
                           {/* Title — double-click to edit */}
                           {isInlineTitle ? (
@@ -414,7 +412,7 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                                 }
                               }}
                               onBlur={() => {
-                                if (inlineEdit.editValue.trim() && inlineEdit.editValue.trim() !== step.title) {
+                                if (inlineEdit.editValue.trim() && inlineEdit.editValue.trim() !== task.title) {
                                   inlineEdit.save();
                                 } else {
                                   inlineEdit.cancel();
@@ -427,13 +425,13 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
                               title="Double-click to edit"
                               onDoubleClick={e => {
                                 e.stopPropagation();
-                                inlineEdit.start(step.id, 'title', step.title);
+                                inlineEdit.start(task.id, 'title', task.title);
                               }}
-                            >{step.title}</span>
+                            >{task.title}</span>
                           )}
-                          {step.assignee && (
+                          {task.assignee && (
                             <span className="text-xs text-muted shrink-0 bg-border/50 px-1.5 py-0.5 rounded">
-                              {step.assignee}
+                              {task.assignee}
                             </span>
                           )}
                         </div>
@@ -447,10 +445,10 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
       </div>
 
       {/* Floating Action Bar */}
-      {editMode && selectedStepIds.size > 0 && (
+      {editMode && selectedTaskIds.size > 0 && (
         <div className="sticky bottom-0 bg-surface border-t border-border px-4 py-3 flex items-center gap-3 flex-shrink-0">
           <span className="text-sm font-medium text-foreground whitespace-nowrap">
-            {selectedStepIds.size} selected
+            {selectedTaskIds.size} selected
           </span>
 
           {/* Status dropdown */}
@@ -459,53 +457,53 @@ export default function PlanTree({ projectId, selectedItem, onSelectItem, onCrea
             value=""
             disabled={bulkUpdating}
             onChange={(e) => {
-              const status = e.target.value as Step['status'];
+              const status = e.target.value as Task['status'];
               if (status) performBulkAction({ status });
             }}
           >
             <option value="" disabled>Status...</option>
-            {STEP_STATUSES.map((s) => (
+            {TASK_STATUSES.map((s) => (
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </Select>
 
-          {/* Bolt dropdown */}
+          {/* Cycle dropdown */}
           <Select
             size="sm"
             value=""
             disabled={bulkUpdating}
             onChange={(e) => {
-              const bolt_id = e.target.value;
-              if (bolt_id) performBulkAction({ bolt_id: bolt_id === '__none__' ? null as unknown as string : bolt_id });
+              const cycle_id = e.target.value;
+              if (cycle_id) performBulkAction({ cycle_id: cycle_id === '__none__' ? null as unknown as string : cycle_id });
             }}
           >
-            <option value="" disabled>Bolt...</option>
-            <option value="__none__">No bolt</option>
-            {bolts.map((b) => (
+            <option value="" disabled>Cycle...</option>
+            <option value="__none__">No cycle</option>
+            {cycles.map((b) => (
               <option key={b.id} value={b.id}>{b.title}</option>
             ))}
           </Select>
 
-          {/* Phase dropdown */}
+          {/* Unit dropdown */}
           <Select
             size="sm"
             value=""
             disabled={bulkUpdating}
             onChange={(e) => {
-              const phase_id = e.target.value;
-              if (phase_id) performBulkAction({ phase_id });
+              const unit_id = e.target.value;
+              if (unit_id) performBulkAction({ unit_id });
             }}
           >
-            <option value="" disabled>Move to phase...</option>
-            {allPhases.map((ph) => (
-              <option key={ph.id} value={ph.id}>{ph.planTitle} / {ph.title}</option>
+            <option value="" disabled>Move to unit...</option>
+            {allUnits.map((u) => (
+              <option key={u.id} value={u.id}>{u.planTitle} / {u.title}</option>
             ))}
           </Select>
 
           <div className="flex-1" />
 
           {/* Select All / Deselect All */}
-          {selectedStepIds.size < allStepIds.length ? (
+          {selectedTaskIds.size < allTaskIds.length ? (
             <Button variant="ghost" size="sm" onClick={selectAll} disabled={bulkUpdating}>
               Select All
             </Button>

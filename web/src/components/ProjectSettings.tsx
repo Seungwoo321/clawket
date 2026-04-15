@@ -171,9 +171,9 @@ export function ProjectSettings({
             <p className="text-[10px] text-muted mt-1">Relative to project cwd, or absolute paths. Each path becomes a root in the wiki tree.</p>
           </div>
 
-          {/* Lattice Enabled */}
+          {/* Clawket Enabled */}
           <div>
-            <label className="text-xs text-muted block mb-1">Lattice Management</label>
+            <label className="text-xs text-muted block mb-1">Clawket Management</label>
             <div className="flex items-center gap-3">
               <button
                 onClick={async () => {
@@ -185,7 +185,7 @@ export function ProjectSettings({
                 <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${project.enabled ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
               </button>
               <span className="text-xs text-foreground">
-                {project.enabled ? 'Active — hooks enforce step registration' : 'Disabled — Claude works without Lattice constraints'}
+                {project.enabled ? 'Active — hooks enforce task registration' : 'Disabled — Claude works without Clawket constraints'}
               </span>
             </div>
           </div>

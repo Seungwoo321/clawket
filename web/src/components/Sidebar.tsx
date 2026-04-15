@@ -23,14 +23,29 @@ function MoonIcon({ className }: { className?: string }) {
   );
 }
 
+function ClawketLogo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
+      {/* Ticket */}
+      <rect x="6" y="12" width="18" height="10" rx="2" fill="#FACC15"/>
+      <circle cx="6" cy="17" r="2" fill="white"/>
+      {/* Punch hole */}
+      <circle cx="15" cy="17" r="1.5" fill="currentColor" opacity="0.3"/>
+      {/* Claw */}
+      <path d="M20 6 C24 4, 28 8, 24 12" stroke="#EF4444" strokeWidth="3" strokeLinecap="round"/>
+      <path d="M20 6 C22 10, 18 12, 16 10" stroke="#EF4444" strokeWidth="3" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 function useTheme() {
   const [theme, setThemeState] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('lattice-theme') as 'dark' | 'light') || 'dark';
+    return (localStorage.getItem('clawket-theme') as 'dark' | 'light') || 'dark';
   });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('lattice-theme', theme);
+    localStorage.setItem('clawket-theme', theme);
   }, [theme]);
 
   const toggle = () => setThemeState(t => t === 'dark' ? 'light' : 'dark');
@@ -58,7 +73,7 @@ const viewNavItems: { key: 'summary' | 'plans' | 'board' | 'backlog' | 'timeline
 export default function Sidebar({ projects, selectedId, onSelect, onProjectCreated, activeView, onViewChange }: SidebarProps) {
   const { theme, toggle: toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(() => {
-    return localStorage.getItem('lattice-sidebar-collapsed') === 'true';
+    return localStorage.getItem('clawket-sidebar-collapsed') === 'true';
   });
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -67,7 +82,7 @@ export default function Sidebar({ projects, selectedId, onSelect, onProjectCreat
   function toggleCollapse() {
     setCollapsed(prev => {
       const next = !prev;
-      localStorage.setItem('lattice-sidebar-collapsed', String(next));
+      localStorage.setItem('clawket-sidebar-collapsed', String(next));
       return next;
     });
   }
@@ -156,21 +171,8 @@ export default function Sidebar({ projects, selectedId, onSelect, onProjectCreat
     <aside className="w-60 shrink-0 bg-surface border-r border-border flex flex-col h-full">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <h1 className="text-sm font-semibold text-foreground tracking-wide uppercase flex items-center gap-2">
-          <svg width="18" height="18" viewBox="0 0 128 128" fill="none">
-            <rect width="128" height="128" rx="24" fill="currentColor" opacity="0.15"/>
-            <line x1="32" y1="28" x2="32" y2="100" stroke="currentColor" strokeWidth="3" strokeLinecap="round" opacity="0.4"/>
-            <line x1="64" y1="28" x2="64" y2="100" stroke="currentColor" strokeWidth="3" strokeLinecap="round" opacity="0.4"/>
-            <line x1="96" y1="28" x2="96" y2="100" stroke="currentColor" strokeWidth="3" strokeLinecap="round" opacity="0.4"/>
-            <line x1="20" y1="40" x2="108" y2="40" stroke="currentColor" strokeWidth="3" strokeLinecap="round" opacity="0.4"/>
-            <line x1="20" y1="64" x2="108" y2="64" stroke="currentColor" strokeWidth="3" strokeLinecap="round" opacity="0.4"/>
-            <line x1="20" y1="88" x2="108" y2="88" stroke="currentColor" strokeWidth="3" strokeLinecap="round" opacity="0.4"/>
-            <circle cx="32" cy="40" r="6" fill="currentColor"/><circle cx="64" cy="40" r="6" fill="currentColor"/>
-            <circle cx="96" cy="40" r="6" fill="#22c55e"/><circle cx="32" cy="64" r="6" fill="currentColor"/>
-            <circle cx="64" cy="64" r="6" fill="#f59e0b"/><circle cx="96" cy="64" r="6" fill="currentColor"/>
-            <circle cx="32" cy="88" r="6" fill="#22c55e"/><circle cx="64" cy="88" r="6" fill="#22c55e"/>
-            <circle cx="96" cy="88" r="6" fill="currentColor"/>
-          </svg>
-          Lattice
+          <ClawketLogo />
+          Clawket
         </h1>
         <button
           onClick={toggleCollapse}

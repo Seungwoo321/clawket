@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { Bolt, Step, Run, TimelineEvent, TimelineEventType } from '../types';
+import type { Cycle, Task, Run, TimelineEvent, TimelineEventType } from '../types';
 import { CLOSED_STATUSES } from '../types';
 import api from '../api';
 
 interface TimelineViewProps {
   projectId: string;
-  onSelectStep: (stepId: string) => void;
+  onSelectTask: (taskId: string) => void;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -43,8 +43,8 @@ const RESULT_COLORS: Record<string, string> = {
 // ── Swimlane types ──────────────────────────────────────────────────────────
 
 interface SwimlaneRun extends Run {
-  stepTitle: string;
-  stepTicket?: string;
+  taskTitle: string;
+  taskTicket?: string;
 }
 
 type ViewTab = 'swimlane' | 'activity';
@@ -83,19 +83,19 @@ function describeEvent(ev: TimelineEvent): { action: string; target: string; det
 
 // ── Main component ──────────────────────────────────────────────────────────
 
-interface BoltProgress {
-  bolt: Bolt;
-  steps: Step[];
+interface CycleProgress {
+  cycle: Cycle;
+  tasks: Task[];
   done: number;
   inProgress: number;
   blocked: number;
   total: number;
 }
 
-export default function TimelineView({ projectId, onSelectStep }: TimelineViewProps) {
+export default function TimelineView({ projectId, onSelectTask }: TimelineViewProps) {
   const [runs, setRuns] = useState<SwimlaneRun[]>([]);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [boltProgress, setBoltProgress] = useState<BoltProgress | null>(null);
+  const [cycleProgress, setCycleProgress] = useState<CycleProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<ViewTab>('swimlane');
   const [hoveredRunId, setHoveredRunId] = useState<string | null>(null);
@@ -108,42 +108,42 @@ export default function TimelineView({ projectId, onSelectStep }: TimelineViewPr
 
     async function load() {
       try {
-        const [runData, eventData, boltList] = await Promise.all([
+        const [runData, eventData, cycleList] = await Promise.all([
           api.listRuns({ project_id: projectId }),
           api.listProjectTimeline(projectId, { limit: 100 }),
-          api.listBolts({ project_id: projectId }),
+          api.listCycles({ project_id: projectId }),
         ]);
         if (cancelled) return;
 
-        // Active bolt progress
-        const activeBolt = boltList.find(b => b.status === 'active');
-        if (activeBolt) {
-          const boltSteps = await api.listBoltSteps(activeBolt.id);
+        // Active cycle progress
+        const activeCycle = cycleList.find(b => b.status === 'active');
+        if (activeCycle) {
+          const cycleTasks = await api.listCycleTasks(activeCycle.id);
           if (!cancelled) {
-            setBoltProgress({
-              bolt: activeBolt,
-              steps: boltSteps,
-              done: boltSteps.filter(s => CLOSED_STATUSES.has(s.status)).length,
-              inProgress: boltSteps.filter(s => s.status === 'in_progress').length,
-              blocked: boltSteps.filter(s => s.status === 'blocked').length,
-              total: boltSteps.length,
+            setCycleProgress({
+              cycle: activeCycle,
+              tasks: cycleTasks,
+              done: cycleTasks.filter(s => CLOSED_STATUSES.has(s.status)).length,
+              inProgress: cycleTasks.filter(s => s.status === 'in_progress').length,
+              blocked: cycleTasks.filter(s => s.status === 'blocked').length,
+              total: cycleTasks.length,
             });
           }
         }
 
-        // Resolve step titles for runs
-        const stepIds = [...new Set(runData.map(r => r.step_id))];
-        const stepMap: Record<string, { title: string; ticket?: string }> = {};
+        // Resolve task titles for runs
+        const taskIds = [...new Set(runData.map(r => r.task_id))];
+        const taskMap: Record<string, { title: string; ticket?: string }> = {};
         await Promise.all(
-          stepIds.slice(0, 50).map(async id => {
-            try { const s = await api.getStep(id); stepMap[id] = { title: s.title, ticket: s.ticket_number || undefined }; } catch { /* skip */ }
+          taskIds.slice(0, 50).map(async id => {
+            try { const s = await api.getTask(id); taskMap[id] = { title: s.title, ticket: s.ticket_number || undefined }; } catch { /* skip */ }
           })
         );
 
         setRuns(runData.map(r => ({
           ...r,
-          stepTitle: stepMap[r.step_id]?.title || r.step_id,
-          stepTicket: stepMap[r.step_id]?.ticket,
+          taskTitle: taskMap[r.task_id]?.title || r.task_id,
+          taskTicket: taskMap[r.task_id]?.ticket,
         })));
         setEvents(eventData);
       } catch (err) {
@@ -213,33 +213,33 @@ export default function TimelineView({ projectId, onSelectStep }: TimelineViewPr
         </div>
       </div>
 
-      {/* Bolt Progress Meter */}
-      {boltProgress && (
+      {/* Cycle Progress Meter */}
+      {cycleProgress && (
         <div className="bg-surface rounded-lg border border-border p-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-foreground">{boltProgress.bolt.title}</span>
+            <span className="text-sm font-medium text-foreground">{cycleProgress.cycle.title}</span>
             <span className="text-xs text-muted">
-              {boltProgress.done}/{boltProgress.total} done
-              {boltProgress.inProgress > 0 && ` · ${boltProgress.inProgress} active`}
-              {boltProgress.blocked > 0 && ` · ${boltProgress.blocked} blocked`}
+              {cycleProgress.done}/{cycleProgress.total} done
+              {cycleProgress.inProgress > 0 && ` · ${cycleProgress.inProgress} active`}
+              {cycleProgress.blocked > 0 && ` · ${cycleProgress.blocked} blocked`}
             </span>
           </div>
           <div className="w-full h-2 rounded-full bg-surface-high overflow-hidden flex">
-            {boltProgress.done > 0 && (
-              <div className="bg-success h-full" style={{ width: `${(boltProgress.done / boltProgress.total) * 100}%` }} />
+            {cycleProgress.done > 0 && (
+              <div className="bg-success h-full" style={{ width: `${(cycleProgress.done / cycleProgress.total) * 100}%` }} />
             )}
-            {boltProgress.inProgress > 0 && (
-              <div className="bg-warning h-full" style={{ width: `${(boltProgress.inProgress / boltProgress.total) * 100}%` }} />
+            {cycleProgress.inProgress > 0 && (
+              <div className="bg-warning h-full" style={{ width: `${(cycleProgress.inProgress / cycleProgress.total) * 100}%` }} />
             )}
-            {boltProgress.blocked > 0 && (
-              <div className="bg-danger h-full" style={{ width: `${(boltProgress.blocked / boltProgress.total) * 100}%` }} />
+            {cycleProgress.blocked > 0 && (
+              <div className="bg-danger h-full" style={{ width: `${(cycleProgress.blocked / cycleProgress.total) * 100}%` }} />
             )}
           </div>
-          {boltProgress.bolt.started_at && (
+          {cycleProgress.cycle.started_at && (
             <div className="text-[10px] text-muted mt-1">
-              {Math.round((boltProgress.done / boltProgress.total) * 100)}% complete
-              {' · '}started {formatDate(boltProgress.bolt.started_at)}
-              {boltProgress.done > 0 && ` · ~${formatDuration((Date.now() - boltProgress.bolt.started_at) / boltProgress.done * (boltProgress.total - boltProgress.done))} remaining`}
+              {Math.round((cycleProgress.done / cycleProgress.total) * 100)}% complete
+              {' · '}started {formatDate(cycleProgress.cycle.started_at)}
+              {cycleProgress.done > 0 && ` · ~${formatDuration((Date.now() - cycleProgress.cycle.started_at) / cycleProgress.done * (cycleProgress.total - cycleProgress.done))} remaining`}
             </div>
           )}
         </div>
@@ -285,14 +285,14 @@ export default function TimelineView({ projectId, onSelectStep }: TimelineViewPr
                       return (
                         <button
                           key={run.id}
-                          onClick={() => onSelectStep(run.step_id)}
+                          onClick={() => onSelectTask(run.task_id)}
                           onMouseEnter={() => setHoveredRunId(run.id)}
                           onMouseLeave={() => setHoveredRunId(null)}
                           className={`absolute top-1 bottom-1 rounded cursor-pointer transition-all ${colorClass} ${
                             isHovered ? 'ring-2 ring-primary z-10' : ''
                           } ${isLongest && !isHovered ? 'ring-1 ring-foreground/20' : ''}`}
                           style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%` }}
-                          title={`${run.stepTitle}\n@${run.agent} · ${formatDuration(end - run.started_at)} · ${result}`}
+                          title={`${run.taskTitle}\n@${run.agent} · ${formatDuration(end - run.started_at)} · ${result}`}
                         />
                       );
                     })}
@@ -300,10 +300,10 @@ export default function TimelineView({ projectId, onSelectStep }: TimelineViewPr
                 </div>
               ))}
 
-              {/* Dependency / Blocked steps */}
-              {boltProgress && (() => {
-                const blocked = boltProgress.steps.filter(s => s.status === 'blocked');
-                const withDeps = boltProgress.steps.filter(s => s.depends_on && s.depends_on.length > 0);
+              {/* Dependency / Blocked tasks */}
+              {cycleProgress && (() => {
+                const blocked = cycleProgress.tasks.filter(s => s.status === 'blocked');
+                const withDeps = cycleProgress.tasks.filter(s => s.depends_on && s.depends_on.length > 0);
                 if (blocked.length === 0 && withDeps.length === 0) return null;
                 return (
                   <div className="mt-3 p-3 bg-surface border border-border rounded-lg">
@@ -311,11 +311,11 @@ export default function TimelineView({ projectId, onSelectStep }: TimelineViewPr
                       <div className="mb-2">
                         <span className="text-xs font-medium text-danger">Blocked ({blocked.length})</span>
                         {blocked.map(s => {
-                          const blockers = boltProgress.steps.filter(b => (s.depends_on || []).includes(b.id));
+                          const blockers = cycleProgress.tasks.filter(b => (s.depends_on || []).includes(b.id));
                           return (
                             <div key={s.id} className="flex items-center gap-2 mt-1 text-xs">
                               <span className="text-danger">⊘</span>
-                              <button onClick={() => onSelectStep(s.id)} className="text-foreground hover:text-primary cursor-pointer">
+                              <button onClick={() => onSelectTask(s.id)} className="text-foreground hover:text-primary cursor-pointer">
                                 {s.ticket_number} {s.title}
                               </button>
                               {blockers.length > 0 && (
@@ -328,7 +328,7 @@ export default function TimelineView({ projectId, onSelectStep }: TimelineViewPr
                     )}
                     {withDeps.length > 0 && blocked.length === 0 && (
                       <div>
-                        <span className="text-xs font-medium text-muted">Dependencies ({withDeps.length} steps with depends_on)</span>
+                        <span className="text-xs font-medium text-muted">Dependencies ({withDeps.length} tasks with depends_on)</span>
                       </div>
                     )}
                   </div>
@@ -351,8 +351,8 @@ export default function TimelineView({ projectId, onSelectStep }: TimelineViewPr
                 return (
                   <div className="mt-2 p-3 bg-surface border border-border rounded-lg text-sm">
                     <div className="flex items-center gap-2">
-                      {run.stepTicket && <span className="text-xs font-mono text-primary">{run.stepTicket}</span>}
-                      <span className="font-medium text-foreground">{run.stepTitle}</span>
+                      {run.taskTicket && <span className="text-xs font-mono text-primary">{run.taskTicket}</span>}
+                      <span className="font-medium text-foreground">{run.taskTitle}</span>
                       <span className="text-xs text-muted">@{run.agent}</span>
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted">
@@ -397,7 +397,7 @@ export default function TimelineView({ projectId, onSelectStep }: TimelineViewPr
                       return (
                         <button
                           key={ev.id}
-                          onClick={() => ev.entity_type === 'step' && onSelectStep(ev.entity_id)}
+                          onClick={() => ev.entity_type === 'task' && onSelectTask(ev.entity_id)}
                           className="w-full text-left flex items-start gap-2.5 pl-1 pr-3 py-1.5 rounded-md transition-colors hover:bg-surface-hover cursor-pointer"
                         >
                           <div className="w-[23px] flex items-center justify-center shrink-0 pt-0.5 relative z-10">

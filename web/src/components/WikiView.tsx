@@ -303,14 +303,14 @@ export default function WikiView({ projectId }: WikiViewProps) {
       const cwd = project?.cwds?.[0] || null;
       setProjectCwd(cwd);
 
-      // Load artifacts for all plans + phases
-      const phaseResults = await Promise.all(
-        planList.map(p => api.listPhases({ plan_id: p.id }))
+      // Load artifacts for all plans + units
+      const unitResults = await Promise.all(
+        planList.map(p => api.listUnits({ plan_id: p.id }))
       );
-      const allPhases = phaseResults.flat();
+      const allUnits = unitResults.flat();
       const artifactResults = await Promise.all([
         ...planList.map(p => api.listArtifacts({ plan_id: p.id })),
-        ...allPhases.map(ph => api.listArtifacts({ phase_id: ph.id })),
+        ...allUnits.map(u => api.listArtifacts({ unit_id: u.id })),
       ]);
       // Deduplicate by id
       const seen = new Set<string>();

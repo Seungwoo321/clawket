@@ -9,7 +9,7 @@ export interface Project {
   wiki_paths: string[];
 }
 
-export interface Bolt {
+export interface Cycle {
   id: string;
   project_id: string;
   title: string;
@@ -33,7 +33,7 @@ export interface Plan {
   status: 'draft' | 'active' | 'completed';
 }
 
-export interface Phase {
+export interface Unit {
   id: string;
   plan_id: string;
   idx: number;
@@ -42,15 +42,15 @@ export interface Phase {
   created_at: number;
   started_at: number | null;
   completed_at: number | null;
-  status?: string; // Phase has no status in the workflow — kept for backward compat
+  status?: string; // Unit has no status in the workflow — kept for backward compat
   approval_required: number;
   approved_by: string | null;
   approved_at: number | null;
 }
 
-export interface Step {
+export interface Task {
   id: string;
-  phase_id: string;
+  unit_id: string;
   idx: number;
   title: string;
   body: string;
@@ -61,19 +61,19 @@ export interface Step {
   assignee: string | null;
   depends_on: string[];
   ticket_number: string | null;
-  parent_step_id: string | null;
+  parent_task_id: string | null;
   priority: 'critical' | 'high' | 'medium' | 'low';
   complexity: string | null;
   estimated_edits: number | null;
-  bolt_id: string | null;
+  cycle_id: string | null;
   labels: string[];
   reporter: string | null;
   type: 'task' | 'bug' | 'feature' | 'enhancement' | 'refactor' | 'docs' | 'test' | 'chore';
 }
 
-export interface StepComment {
+export interface TaskComment {
   id: string;
-  step_id: string;
+  task_id: string;
   author: string;
   body: string;
   created_at: number;
@@ -91,8 +91,8 @@ export interface ArtifactVersion {
 
 export interface Artifact {
   id: string;
-  step_id: string | null;
-  phase_id: string | null;
+  task_id: string | null;
+  unit_id: string | null;
   plan_id: string | null;
   type: string;
   title: string;
@@ -104,7 +104,7 @@ export interface Artifact {
 
 export interface Run {
   id: string;
-  step_id: string;
+  task_id: string;
   session_id: string | null;
   agent: string;
   started_at: number;
@@ -120,7 +120,7 @@ export type TimelineEventType =
 export interface TimelineEvent {
   id: string;
   event_type: TimelineEventType;
-  entity_type: 'step' | 'phase' | 'bolt' | 'plan';
+  entity_type: 'task' | 'unit' | 'cycle' | 'plan';
   entity_id: string;
   entity_title: string;
   actor: string | null;
@@ -137,19 +137,18 @@ export interface TimelineEvent {
   };
 }
 
-/** Terminal statuses — steps that count as "closed" for progress calculations */
-/** Terminal statuses — steps that count as "closed" for progress calculations */
-export const CLOSED_STATUSES: ReadonlySet<Step['status']> = new Set(['done', 'cancelled']);
+/** Terminal statuses — tasks that count as "closed" for progress calculations */
+export const CLOSED_STATUSES: ReadonlySet<Task['status']> = new Set(['done', 'cancelled']);
 
-export function isClosedStep(step: Pick<Step, 'status'>): boolean {
-  return CLOSED_STATUSES.has(step.status);
+export function isClosedTask(task: Pick<Task, 'status'>): boolean {
+  return CLOSED_STATUSES.has(task.status);
 }
 
 export interface Question {
   id: string;
   plan_id: string | null;
-  phase_id: string | null;
-  step_id: string | null;
+  unit_id: string | null;
+  task_id: string | null;
   kind: string;
   origin: string;
   body: string;

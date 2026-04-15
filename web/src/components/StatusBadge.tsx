@@ -6,13 +6,13 @@ interface StatusBadgeProps {
 }
 
 const statusConfig: Record<string, { label: string; variant: BadgeProps['variant'] }> = {
-  // Step statuses
+  // Task statuses
   todo: { label: 'Todo', variant: 'default' },
   in_progress: { label: 'In Progress', variant: 'warning' },
   done: { label: 'Done', variant: 'success' },
   blocked: { label: 'Blocked', variant: 'danger' },
   cancelled: { label: 'Cancelled', variant: 'default' },
-  // Plan/Phase/Bolt statuses
+  // Plan/Unit/Cycle statuses
   draft: { label: 'Draft', variant: 'default' },
   planning: { label: 'Planning', variant: 'default' },
   pending: { label: 'Pending', variant: 'default' },

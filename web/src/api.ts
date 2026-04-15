@@ -1,13 +1,13 @@
 import type {
   Project,
-  Bolt,
+  Cycle,
   Plan,
-  Phase,
-  Step,
+  Unit,
+  Task,
   Artifact,
   Run,
   Question,
-  StepComment,
+  TaskComment,
   ArtifactVersion,
   TimelineEvent,
 } from './types';
@@ -164,152 +164,152 @@ export function approvePlan(id: string): Promise<Plan> {
 }
 
 // ---------------------------------------------------------------------------
-// Bolts (Sprint / AIDLC Bolt cycle)
+// Cycles (Sprint / AIDLC Cycle)
 // ---------------------------------------------------------------------------
 
-export function listBolts(params?: {
+export function listCycles(params?: {
   project_id?: string;
   status?: string;
-}): Promise<Bolt[]> {
-  return get(`/bolts${qs(params)}`);
+}): Promise<Cycle[]> {
+  return get(`/cycles${qs(params)}`);
 }
 
-export function getBolt(id: string): Promise<Bolt> {
-  return get(`/bolts/${encodeURIComponent(id)}`);
+export function getCycle(id: string): Promise<Cycle> {
+  return get(`/cycles/${encodeURIComponent(id)}`);
 }
 
-export function createBolt(data: {
+export function createCycle(data: {
   project_id: string;
   title: string;
   goal?: string;
   idx?: number;
-}): Promise<Bolt> {
-  return post('/bolts', data);
+}): Promise<Cycle> {
+  return post('/cycles', data);
 }
 
-export function updateBolt(
+export function updateCycle(
   id: string,
-  data: Partial<Pick<Bolt, 'title' | 'goal' | 'status'>>,
-): Promise<Bolt> {
-  return patch(`/bolts/${encodeURIComponent(id)}`, data);
+  data: Partial<Pick<Cycle, 'title' | 'goal' | 'status'>>,
+): Promise<Cycle> {
+  return patch(`/cycles/${encodeURIComponent(id)}`, data);
 }
 
-export function deleteBolt(id: string): Promise<void> {
-  return del(`/bolts/${encodeURIComponent(id)}`);
+export function deleteCycle(id: string): Promise<void> {
+  return del(`/cycles/${encodeURIComponent(id)}`);
 }
 
-export function listBoltSteps(id: string): Promise<Step[]> {
-  return get(`/bolts/${encodeURIComponent(id)}/steps`);
+export function listCycleTasks(id: string): Promise<Task[]> {
+  return get(`/cycles/${encodeURIComponent(id)}/tasks`);
 }
 
-export function listBacklog(project_id: string): Promise<Step[]> {
+export function listBacklog(project_id: string): Promise<Task[]> {
   return get(`/backlog${qs({ project_id })}`);
 }
 
 // ---------------------------------------------------------------------------
-// Phases
+// Units
 // ---------------------------------------------------------------------------
 
-export function listPhases(params?: {
+export function listUnits(params?: {
   plan_id?: string;
   status?: string;
-}): Promise<Phase[]> {
-  return get(`/phases${qs(params)}`);
+}): Promise<Unit[]> {
+  return get(`/units${qs(params)}`);
 }
 
-export function getPhase(id: string): Promise<Phase> {
-  return get(`/phases/${encodeURIComponent(id)}`);
+export function getUnit(id: string): Promise<Unit> {
+  return get(`/units/${encodeURIComponent(id)}`);
 }
 
-export function createPhase(data: {
+export function createUnit(data: {
   plan_id: string;
   idx: number;
   title: string;
   goal?: string;
   approval_required?: number;
-}): Promise<Phase> {
-  return post('/phases', data);
+}): Promise<Unit> {
+  return post('/units', data);
 }
 
-export function updatePhase(
+export function updateUnit(
   id: string,
-  data: Partial<Pick<Phase, 'title' | 'goal'>>,
-): Promise<Phase> {
-  return patch(`/phases/${encodeURIComponent(id)}`, data);
+  data: Partial<Pick<Unit, 'title' | 'goal'>>,
+): Promise<Unit> {
+  return patch(`/units/${encodeURIComponent(id)}`, data);
 }
 
-export function deletePhase(id: string): Promise<void> {
-  return del(`/phases/${encodeURIComponent(id)}`);
+export function deleteUnit(id: string): Promise<void> {
+  return del(`/units/${encodeURIComponent(id)}`);
 }
 
-export function approvePhase(id: string, by?: string): Promise<Phase> {
-  return post(`/phases/${encodeURIComponent(id)}/approve`, by ? { approved_by: by } : undefined);
+export function approveUnit(id: string, by?: string): Promise<Unit> {
+  return post(`/units/${encodeURIComponent(id)}/approve`, by ? { approved_by: by } : undefined);
 }
 
 // ---------------------------------------------------------------------------
-// Steps
+// Tasks
 // ---------------------------------------------------------------------------
 
-export function listSteps(params?: {
-  phase_id?: string;
+export function listTasks(params?: {
+  unit_id?: string;
   plan_id?: string;
   status?: string;
-}): Promise<Step[]> {
-  return get(`/steps${qs(params)}`);
+}): Promise<Task[]> {
+  return get(`/tasks${qs(params)}`);
 }
 
-export function listChildSteps(parentStepId: string): Promise<Step[]> {
-  return get(`/steps${qs({ parent_step_id: parentStepId })}`);
+export function listChildTasks(parentTaskId: string): Promise<Task[]> {
+  return get(`/tasks${qs({ parent_task_id: parentTaskId })}`);
 }
 
-export function getStep(id: string): Promise<Step> {
-  return get(`/steps/${encodeURIComponent(id)}`);
+export function getTask(id: string): Promise<Task> {
+  return get(`/tasks/${encodeURIComponent(id)}`);
 }
 
-export function createStep(data: {
-  phase_id: string;
+export function createTask(data: {
+  unit_id: string;
   idx: number;
   title: string;
   body: string;
   assignee?: string;
   depends_on?: string[];
-  parent_step_id?: string;
-}): Promise<Step> {
-  return post('/steps', data);
+  parent_task_id?: string;
+}): Promise<Task> {
+  return post('/tasks', data);
 }
 
-export function updateStep(
+export function updateTask(
   id: string,
-  data: Partial<Pick<Step, 'title' | 'body' | 'status' | 'assignee' | 'depends_on' | 'bolt_id' | 'phase_id'>>,
-): Promise<Step> {
-  return patch(`/steps/${encodeURIComponent(id)}`, data);
+  data: Partial<Pick<Task, 'title' | 'body' | 'status' | 'assignee' | 'depends_on' | 'cycle_id' | 'unit_id'>>,
+): Promise<Task> {
+  return patch(`/tasks/${encodeURIComponent(id)}`, data);
 }
 
-export function deleteStep(id: string): Promise<void> {
-  return del(`/steps/${encodeURIComponent(id)}`);
+export function deleteTask(id: string): Promise<void> {
+  return del(`/tasks/${encodeURIComponent(id)}`);
 }
 
-export function bulkUpdateSteps(
+export function bulkUpdateTasks(
   ids: string[],
-  fields: Partial<Pick<Step, 'status' | 'bolt_id' | 'phase_id' | 'assignee'>>,
-): Promise<Step[]> {
-  return post('/steps/bulk-update', { ids, fields });
+  fields: Partial<Pick<Task, 'status' | 'cycle_id' | 'unit_id' | 'assignee'>>,
+): Promise<Task[]> {
+  return post('/tasks/bulk-update', { ids, fields });
 }
 
-export function appendStepBody(id: string, text: string): Promise<Step> {
-  return post(`/steps/${encodeURIComponent(id)}/append`, { text });
+export function appendTaskBody(id: string, text: string): Promise<Task> {
+  return post(`/tasks/${encodeURIComponent(id)}/append`, { text });
 }
 
-export function searchSteps(query: string, limit?: number): Promise<Step[]> {
-  return get(`/steps/search${qs({ q: query, limit })}`);
+export function searchTasks(query: string, limit?: number): Promise<Task[]> {
+  return get(`/tasks/search${qs({ q: query, limit })}`);
 }
 
-export function addStepLabel(id: string, label: string): Promise<Step> {
-  return post(`/steps/${encodeURIComponent(id)}/labels`, { label });
+export function addTaskLabel(id: string, label: string): Promise<Task> {
+  return post(`/tasks/${encodeURIComponent(id)}/labels`, { label });
 }
 
-export function removeStepLabel(id: string, label: string): Promise<Step> {
-  return del(`/steps/${encodeURIComponent(id)}/labels/${encodeURIComponent(label)}`);
+export function removeTaskLabel(id: string, label: string): Promise<Task> {
+  return del(`/tasks/${encodeURIComponent(id)}/labels/${encodeURIComponent(label)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -340,8 +340,8 @@ export function getWikiFile(cwd: string, path: string, projectId?: string): Prom
 // ---------------------------------------------------------------------------
 
 export function listArtifacts(params?: {
-  step_id?: string;
-  phase_id?: string;
+  task_id?: string;
+  unit_id?: string;
   plan_id?: string;
   type?: string;
 }): Promise<Artifact[]> {
@@ -353,8 +353,8 @@ export function getArtifact(id: string): Promise<Artifact> {
 }
 
 export function createArtifact(data: {
-  step_id?: string;
-  phase_id?: string;
+  task_id?: string;
+  unit_id?: string;
   plan_id?: string;
   type: string;
   title: string;
@@ -382,7 +382,7 @@ export function deleteArtifact(id: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export function listRuns(params?: {
-  step_id?: string;
+  task_id?: string;
   session_id?: string;
   project_id?: string;
 }): Promise<Run[]> {
@@ -394,7 +394,7 @@ export function getRun(id: string): Promise<Run> {
 }
 
 export function startRun(data: {
-  step_id: string;
+  task_id: string;
   session_id?: string;
   agent?: string;
 }): Promise<Run> {
@@ -425,8 +425,8 @@ export function listProjectTimeline(
 
 export function listQuestions(params?: {
   plan_id?: string;
-  phase_id?: string;
-  step_id?: string;
+  unit_id?: string;
+  task_id?: string;
   kind?: string;
   unanswered?: string;
 }): Promise<Question[]> {
@@ -439,8 +439,8 @@ export function getQuestion(id: string): Promise<Question> {
 
 export function createQuestion(data: {
   plan_id?: string;
-  phase_id?: string;
-  step_id?: string;
+  unit_id?: string;
+  task_id?: string;
   kind: string;
   origin: string;
   body: string;
@@ -457,22 +457,22 @@ export function answerQuestion(
 }
 
 // ---------------------------------------------------------------------------
-// Step Comments
+// Task Comments
 // ---------------------------------------------------------------------------
 
-export function fetchStepComments(stepId: string): Promise<StepComment[]> {
-  return get(`/steps/${encodeURIComponent(stepId)}/comments`);
+export function fetchTaskComments(taskId: string): Promise<TaskComment[]> {
+  return get(`/tasks/${encodeURIComponent(taskId)}/comments`);
 }
 
-export function createStepComment(
-  stepId: string,
+export function createTaskComment(
+  taskId: string,
   author: string,
   body: string,
-): Promise<StepComment> {
-  return post(`/steps/${encodeURIComponent(stepId)}/comments`, { author, body });
+): Promise<TaskComment> {
+  return post(`/tasks/${encodeURIComponent(taskId)}/comments`, { author, body });
 }
 
-export function deleteStepComment(id: string): Promise<void> {
+export function deleteTaskComment(id: string): Promise<void> {
   return del(`/comments/${encodeURIComponent(id)}`);
 }
 
@@ -502,23 +502,23 @@ const api = {
   updatePlan,
   deletePlan,
   approvePlan,
-  listPhases,
-  getPhase,
-  createPhase,
-  updatePhase,
-  deletePhase,
-  approvePhase,
-  listSteps,
-  listChildSteps,
-  getStep,
-  createStep,
-  updateStep,
-  deleteStep,
-  bulkUpdateSteps,
-  appendStepBody,
-  searchSteps,
-  addStepLabel,
-  removeStepLabel,
+  listUnits,
+  getUnit,
+  createUnit,
+  updateUnit,
+  deleteUnit,
+  approveUnit,
+  listTasks,
+  listChildTasks,
+  getTask,
+  createTask,
+  updateTask,
+  deleteTask,
+  bulkUpdateTasks,
+  appendTaskBody,
+  searchTasks,
+  addTaskLabel,
+  removeTaskLabel,
   listArtifacts,
   getArtifact,
   createArtifact,
@@ -533,16 +533,16 @@ const api = {
   getQuestion,
   createQuestion,
   answerQuestion,
-  fetchStepComments,
-  createStepComment,
-  deleteStepComment,
+  fetchTaskComments,
+  createTaskComment,
+  deleteTaskComment,
   fetchArtifactVersions,
-  listBolts,
-  getBolt,
-  createBolt,
-  updateBolt,
-  deleteBolt,
-  listBoltSteps,
+  listCycles,
+  getCycle,
+  createCycle,
+  updateCycle,
+  deleteCycle,
+  listCycleTasks,
   listBacklog,
   listWikiFiles,
   getWikiFile,

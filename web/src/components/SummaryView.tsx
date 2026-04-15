@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Project, Plan, Phase, Step, Bolt, Run } from '../types';
+import type { Project, Plan, Unit, Task, Cycle, Run } from '../types';
 import { CLOSED_STATUSES } from '../types';
 import api from '../api';
 import { ProjectSettings } from './ProjectSettings';
 
 interface SummaryViewProps {
   projectId: string;
-  onSelectStep: (stepId: string) => void;
+  onSelectTask: (taskId: string) => void;
 }
 
-interface PhaseWithPlan extends Phase {
+interface UnitWithPlan extends Unit {
   planTitle: string;
 }
 
@@ -39,12 +39,12 @@ function ProgressBar({ done, inProgress, todo, blocked }: { done: number; inProg
   );
 }
 
-export default function SummaryView({ projectId, onSelectStep }: SummaryViewProps) {
+export default function SummaryView({ projectId, onSelectTask }: SummaryViewProps) {
   const [project, setProject] = useState<Project | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [phases, setPhases] = useState<PhaseWithPlan[]>([]);
-  const [steps, setSteps] = useState<Step[]>([]);
-  const [bolts, setBolts] = useState<Bolt[]>([]);
+  const [units, setUnits] = useState<UnitWithPlan[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [cycles, setCycles] = useState<Cycle[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -60,38 +60,38 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
 
     async function load() {
       try {
-        const [proj, planList, boltList] = await Promise.all([
+        const [proj, planList, cycleList] = await Promise.all([
           api.getProject(projectId),
           api.listPlans({ project_id: projectId }),
-          api.listBolts({ project_id: projectId }),
+          api.listCycles({ project_id: projectId }),
         ]);
         if (cancelled) return;
         setProject(proj);
         if (cancelled) return;
         setPlans(planList);
-        setBolts(boltList);
+        setCycles(cycleList);
 
-        // Load phases for each plan
-        const phaseResults = await Promise.all(
-          planList.map(p => api.listPhases({ plan_id: p.id }).then(phases =>
-            phases.map(ph => ({ ...ph, planTitle: p.title }))
+        // Load units for each plan
+        const unitResults = await Promise.all(
+          planList.map(p => api.listUnits({ plan_id: p.id }).then(units =>
+            units.map(u => ({ ...u, planTitle: p.title }))
           ))
         );
         if (cancelled) return;
-        const allPhases = phaseResults.flat();
-        setPhases(allPhases);
+        const allUnits = unitResults.flat();
+        setUnits(allUnits);
 
-        // Load steps for each phase
-        const stepResults = await Promise.all(
-          allPhases.map(ph => api.listSteps({ phase_id: ph.id }))
+        // Load tasks for each unit
+        const taskResults = await Promise.all(
+          allUnits.map(u => api.listTasks({ unit_id: u.id }))
         );
         if (cancelled) return;
-        const allSteps = stepResults.flat();
-        setSteps(allSteps);
+        const allTasks = taskResults.flat();
+        setTasks(allTasks);
 
         // Load recent runs (limited)
         const runResults = await Promise.all(
-          allSteps.slice(0, 20).map(s => api.listRuns({ step_id: s.id }))
+          allTasks.slice(0, 20).map(t => api.listRuns({ task_id: t.id }))
         );
         if (cancelled) return;
         setRuns(runResults.flat());
@@ -114,23 +114,23 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
     );
   }
 
-  // Step stats
-  const stepsByStatus = {
-    done: steps.filter(s => CLOSED_STATUSES.has(s.status)).length,
-    in_progress: steps.filter(s => s.status === 'in_progress').length,
-    todo: steps.filter(s => s.status === 'todo').length,
-    blocked: steps.filter(s => s.status === 'blocked').length,
+  // Task stats
+  const tasksByStatus = {
+    done: tasks.filter(s => CLOSED_STATUSES.has(s.status)).length,
+    in_progress: tasks.filter(s => s.status === 'in_progress').length,
+    todo: tasks.filter(s => s.status === 'todo').length,
+    blocked: tasks.filter(s => s.status === 'blocked').length,
   };
-  const totalSteps = steps.length;
-  const completionPercent = totalSteps > 0 ? Math.round((stepsByStatus.done / totalSteps) * 100) : 0;
+  const totalTasks = tasks.length;
+  const completionPercent = totalTasks > 0 ? Math.round((tasksByStatus.done / totalTasks) * 100) : 0;
 
   // Active agents
   const activeAgents = [...new Set(
-    steps.filter(s => s.status === 'in_progress' && s.assignee).map(s => s.assignee!)
+    tasks.filter(s => s.status === 'in_progress' && s.assignee).map(s => s.assignee!)
   )];
 
-  // Active bolts
-  const activeBolts = bolts.filter(b => b.status === 'active');
+  // Active cycles
+  const activeCycles = cycles.filter(b => b.status === 'active');
 
   // Recent activity (last 10 runs sorted by started_at desc)
   const recentRuns = [...runs]
@@ -143,7 +143,7 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
       <div>
         <h2 className="text-lg font-semibold text-foreground">Summary</h2>
         <p className="text-sm text-muted mt-1">
-          {plans.length} plan{plans.length !== 1 ? 's' : ''} &middot; {phases.length} phase{phases.length !== 1 ? 's' : ''} &middot; {totalSteps} step{totalSteps !== 1 ? 's' : ''}
+          {plans.length} plan{plans.length !== 1 ? 's' : ''} &middot; {units.length} unit{units.length !== 1 ? 's' : ''} &middot; {totalTasks} task{totalTasks !== 1 ? 's' : ''}
         </p>
       </div>
 
@@ -154,30 +154,30 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
           <span className="text-sm font-bold text-primary">{completionPercent}%</span>
         </div>
         <ProgressBar
-          done={stepsByStatus.done}
-          inProgress={stepsByStatus.in_progress}
-          todo={stepsByStatus.todo}
-          blocked={stepsByStatus.blocked}
+          done={tasksByStatus.done}
+          inProgress={tasksByStatus.in_progress}
+          todo={tasksByStatus.todo}
+          blocked={tasksByStatus.blocked}
         />
         <div className="flex gap-4 text-xs text-muted flex-wrap">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success inline-block" /> Closed {stepsByStatus.done}</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning inline-block" /> Active {stepsByStatus.in_progress}</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-surface-high inline-block" /> Todo {stepsByStatus.todo}</span>
-          {stepsByStatus.blocked > 0 && (
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-danger inline-block" /> Blocked {stepsByStatus.blocked}</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success inline-block" /> Closed {tasksByStatus.done}</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning inline-block" /> Active {tasksByStatus.in_progress}</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-surface-high inline-block" /> Todo {tasksByStatus.todo}</span>
+          {tasksByStatus.blocked > 0 && (
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-danger inline-block" /> Blocked {tasksByStatus.blocked}</span>
           )}
         </div>
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Total Steps" value={totalSteps} color="text-foreground" />
-        <StatCard label="Closed" value={stepsByStatus.done} color="text-success" />
-        <StatCard label="In Progress" value={stepsByStatus.in_progress} color="text-warning" />
-        <StatCard label="Blocked" value={stepsByStatus.blocked} color="text-danger" />
+        <StatCard label="Total Tasks" value={totalTasks} color="text-foreground" />
+        <StatCard label="Closed" value={tasksByStatus.done} color="text-success" />
+        <StatCard label="In Progress" value={tasksByStatus.in_progress} color="text-warning" />
+        <StatCard label="Blocked" value={tasksByStatus.blocked} color="text-danger" />
       </div>
 
-      {/* Active agents & bolts */}
+      {/* Active agents & cycles */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Active Agents */}
         <div className="bg-surface rounded-lg border border-border p-4">
@@ -195,45 +195,45 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
           )}
         </div>
 
-        {/* Active Bolts */}
+        {/* Active Cycles */}
         <div className="bg-surface rounded-lg border border-border p-4">
-          <h3 className="text-sm font-medium text-foreground mb-3">Active Bolts</h3>
-          {activeBolts.length > 0 ? (
+          <h3 className="text-sm font-medium text-foreground mb-3">Active Cycles</h3>
+          {activeCycles.length > 0 ? (
             <div className="space-y-2">
-              {activeBolts.map(bolt => {
-                const boltSteps = steps.filter(s => s.bolt_id === bolt.id);
-                const boltDone = boltSteps.filter(s => CLOSED_STATUSES.has(s.status)).length;
+              {activeCycles.map(cycle => {
+                const cycleTasks = tasks.filter(s => s.cycle_id === cycle.id);
+                const cycleDone = cycleTasks.filter(s => CLOSED_STATUSES.has(s.status)).length;
                 return (
-                  <div key={bolt.id} className="flex items-center justify-between">
-                    <span className="text-sm text-foreground">{bolt.title}</span>
-                    <span className="text-xs text-muted">{boltDone}/{boltSteps.length}</span>
+                  <div key={cycle.id} className="flex items-center justify-between">
+                    <span className="text-sm text-foreground">{cycle.title}</span>
+                    <span className="text-xs text-muted">{cycleDone}/{cycleTasks.length}</span>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div className="text-xs text-muted">No active bolts</div>
+            <div className="text-xs text-muted">No active cycles</div>
           )}
         </div>
       </div>
 
-      {/* Phase status */}
+      {/* Unit status */}
       <div className="bg-surface rounded-lg border border-border p-4">
-        <h3 className="text-sm font-medium text-foreground mb-3">Phases</h3>
+        <h3 className="text-sm font-medium text-foreground mb-3">Units</h3>
         <div className="space-y-2">
-          {phases.map(phase => {
-            const phaseSteps = steps.filter(s => s.phase_id === phase.id);
-            const pDone = phaseSteps.filter(s => CLOSED_STATUSES.has(s.status)).length;
-            const pTotal = phaseSteps.length;
+          {units.map(unit => {
+            const unitTasks = tasks.filter(s => s.unit_id === unit.id);
+            const uDone = unitTasks.filter(s => CLOSED_STATUSES.has(s.status)).length;
+            const uTotal = unitTasks.length;
             return (
-              <div key={phase.id} className="flex items-center gap-3">
-                <span className="text-sm text-foreground flex-1 truncate">{phase.title}</span>
+              <div key={unit.id} className="flex items-center gap-3">
+                <span className="text-sm text-foreground flex-1 truncate">{unit.title}</span>
                 <span className="text-xs text-muted whitespace-nowrap">
-                  {pDone}/{pTotal}
+                  {uDone}/{uTotal}
                 </span>
                 <div className="w-24 h-1.5 rounded-full bg-surface-high overflow-hidden">
-                  {pTotal > 0 && (
-                    <div className="h-full bg-success rounded-full" style={{ width: `${(pDone / pTotal) * 100}%` }} />
+                  {uTotal > 0 && (
+                    <div className="h-full bg-success rounded-full" style={{ width: `${(uDone / uTotal) * 100}%` }} />
                   )}
                 </div>
               </div>
@@ -242,24 +242,24 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
         </div>
       </div>
 
-      {/* In-progress steps */}
-      {stepsByStatus.in_progress > 0 && (
+      {/* In-progress tasks */}
+      {tasksByStatus.in_progress > 0 && (
         <div className="bg-surface rounded-lg border border-border p-4">
           <h3 className="text-sm font-medium text-foreground mb-3">In Progress</h3>
           <div className="space-y-1">
-            {steps.filter(s => s.status === 'in_progress').map(step => (
+            {tasks.filter(s => s.status === 'in_progress').map(task => (
               <button
-                key={step.id}
-                onClick={() => onSelectStep(step.id)}
+                key={task.id}
+                onClick={() => onSelectTask(task.id)}
                 className="w-full text-left px-3 py-2 rounded-md hover:bg-surface-hover transition-colors flex items-center gap-2 cursor-pointer"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
-                <span className="text-sm text-foreground truncate flex-1">{step.title}</span>
-                {step.assignee && (
-                  <span className="text-xs text-muted">@{step.assignee}</span>
+                <span className="text-sm text-foreground truncate flex-1">{task.title}</span>
+                {task.assignee && (
+                  <span className="text-xs text-muted">@{task.assignee}</span>
                 )}
-                {step.ticket_number && (
-                  <span className="text-xs text-muted font-mono">{step.ticket_number}</span>
+                {task.ticket_number && (
+                  <span className="text-xs text-muted font-mono">{task.ticket_number}</span>
                 )}
               </button>
             ))}
@@ -273,13 +273,13 @@ export default function SummaryView({ projectId, onSelectStep }: SummaryViewProp
           <h3 className="text-sm font-medium text-foreground mb-3">Recent Activity</h3>
           <div className="space-y-1">
             {recentRuns.map(run => {
-              const step = steps.find(s => s.id === run.step_id);
+              const task = tasks.find(s => s.id === run.task_id);
               const isFinished = !!run.ended_at;
               return (
                 <div key={run.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isFinished ? 'bg-success' : 'bg-warning'}`} />
                   <span className="text-foreground truncate flex-1">
-                    {step?.title || run.step_id}
+                    {task?.title || run.task_id}
                   </span>
                   <span className="text-xs text-muted">@{run.agent}</span>
                   {run.result && (

@@ -1,7 +1,7 @@
-import type { Step } from '../../types';
+import type { Task } from '../../types';
 
 export const COLUMNS: {
-  key: Step['status'];
+  key: Task['status'];
   label: string;
   headerBg: string;
   headerText: string;
@@ -14,14 +14,14 @@ export const COLUMNS: {
   { key: 'done', label: 'Done', headerBg: 'bg-success/10', headerText: 'text-success', countBg: 'bg-success/20', countText: 'text-success' },
 ];
 
-export const PRIORITY_DOT: Record<Step['priority'], string> = {
+export const PRIORITY_DOT: Record<Task['priority'], string> = {
   critical: 'bg-danger',
   high: 'bg-warning',
   medium: 'bg-primary',
   low: 'bg-muted',
 };
 
-export const PRIORITY_LABEL: Record<Step['priority'], string> = {
+export const PRIORITY_LABEL: Record<Task['priority'], string> = {
   critical: 'Critical',
   high: 'High',
   medium: 'Medium',
@@ -29,8 +29,8 @@ export const PRIORITY_LABEL: Record<Step['priority'], string> = {
 };
 
 export const STATUS_TRANSITIONS: Record<
-  Step['status'],
-  { label: string; target: Step['status'] }[]
+  Task['status'],
+  { label: string; target: Task['status'] }[]
 > = {
   todo: [{ label: 'Start \u2192', target: 'in_progress' }],
   in_progress: [
