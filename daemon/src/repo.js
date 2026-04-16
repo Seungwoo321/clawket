@@ -256,6 +256,13 @@ export const questions = {
 
 // -------- Tasks --------
 export const tasks = {
+  /** Resolve user-provided id to canonical TASK-ULID. Accepts either TASK-ULID or ticket_number (e.g. CK-285). Returns null if not found. */
+  _resolveId(db, id) {
+    if (!id) return null;
+    const row = db.prepare(`SELECT id FROM tasks WHERE id = ? OR ticket_number = ?`).get(id, id);
+    return row?.id ?? null;
+  },
+
   /** Resolve project key for a task by traversing unit -> plan -> project. */
   _resolveProjectKey(db, unit_id) {
     const row = db.prepare(
@@ -347,11 +354,13 @@ export const tasks = {
   },
   get(id) {
     const db = getDb();
-    const row = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id);
+    const canonical = tasks._resolveId(db, id);
+    if (!canonical) return null;
+    const row = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(canonical);
     if (!row) return null;
-    row.depends_on = db.prepare(`SELECT depends_on_task_id FROM task_depends_on WHERE task_id = ?`).all(id).map(r => r.depends_on_task_id);
+    row.depends_on = db.prepare(`SELECT depends_on_task_id FROM task_depends_on WHERE task_id = ?`).all(canonical).map(r => r.depends_on_task_id);
     try {
-      row.labels = db.prepare(`SELECT label FROM task_labels WHERE task_id = ?`).all(id).map(r => r.label);
+      row.labels = db.prepare(`SELECT label FROM task_labels WHERE task_id = ?`).all(canonical).map(r => r.label);
     } catch { row.labels = []; }
     return row;
   },
@@ -384,11 +393,20 @@ export const tasks = {
   },
   appendBody(id, text) {
     const db = getDb();
-    db.prepare(`UPDATE tasks SET body = body || ? WHERE id = ?`).run(text, id);
-    return tasks.get(id);
+    const canonical = tasks._resolveId(db, id);
+    if (!canonical) return null;
+    db.prepare(`UPDATE tasks SET body = body || ? WHERE id = ?`).run(text, canonical);
+    return tasks.get(canonical);
   },
   update(id, fields) {
     const db = getDb();
+    // Resolve to canonical TASK-ULID (accepts either TASK-ULID or ticket_number like CK-285)
+    const canonical = tasks._resolveId(db, id);
+    if (!canonical) {
+      throw Object.assign(new Error(`Task not found: ${id}`), { status: 404 });
+    }
+    id = canonical;
+
     const allowed = ['title', 'status', 'assignee', 'priority', 'complexity', 'estimated_edits', 'parent_task_id', 'cycle_id', 'unit_id', 'reporter', 'type', 'agent_id'];
     const sets = [];
     const vals = [];
@@ -530,7 +548,10 @@ export const tasks = {
     return tasks.get(id);
   },
   delete(id) {
-    getDb().prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
+    const db = getDb();
+    const canonical = tasks._resolveId(db, id);
+    if (!canonical) return;
+    db.prepare(`DELETE FROM tasks WHERE id = ?`).run(canonical);
   },
   /** Bulk update multiple tasks with the same fields. Returns updated tasks. */
   bulkUpdate(ids, fields) {
@@ -583,13 +604,17 @@ export const tasks = {
   },
   addLabel(id, label) {
     const db = getDb();
-    db.prepare(`INSERT OR IGNORE INTO task_labels (task_id, label) VALUES (?, ?)`).run(id, label.toLowerCase().trim());
-    return tasks.get(id);
+    const canonical = tasks._resolveId(db, id);
+    if (!canonical) return null;
+    db.prepare(`INSERT OR IGNORE INTO task_labels (task_id, label) VALUES (?, ?)`).run(canonical, label.toLowerCase().trim());
+    return tasks.get(canonical);
   },
   removeLabel(id, label) {
     const db = getDb();
-    db.prepare(`DELETE FROM task_labels WHERE task_id = ? AND label = ?`).run(id, label.toLowerCase().trim());
-    return tasks.get(id);
+    const canonical = tasks._resolveId(db, id);
+    if (!canonical) return null;
+    db.prepare(`DELETE FROM task_labels WHERE task_id = ? AND label = ?`).run(canonical, label.toLowerCase().trim());
+    return tasks.get(canonical);
   },
   listByLabel(label) {
     const db = getDb();

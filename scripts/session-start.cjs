@@ -159,8 +159,8 @@ function getWebUrl() {
 ensureDaemon();
 const cwd = process.env.HOOK_CWD || process.cwd();
 
-// Full context for Claude (show=all)
-const context = exec(`${CLAWKET} dashboard --cwd "${cwd}" --show all`);
+// Active-only context for Claude (completed plans/units available via `clawket plan list --status completed`)
+const context = exec(`${CLAWKET} dashboard --cwd "${cwd}" --show active`);
 const webUrl = getWebUrl();
 
 if (!context) {

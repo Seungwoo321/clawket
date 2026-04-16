@@ -25,7 +25,6 @@ try {
 
 const cwd = hookInput.cwd || process.env.HOOK_CWD || process.cwd();
 
-// Fetch active steps
 const context = exec(`${CLAWKET} dashboard --cwd "${cwd}" --show active`);
 
 if (!context) {

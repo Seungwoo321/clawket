@@ -9,7 +9,6 @@ import { paths, ensureDirs } from './paths.js';
 import { getDb, closeDb } from './db.js';
 import { projects, plans, units, tasks, cycles, artifacts, runs, questions, taskComments, artifactVersions, activityLog, taskRelations, timeline } from './repo.js';
 import { importPlanFile } from './import-plan.js';
-import { webDashboardHtml } from './web.js';
 import { formatOutput } from './format.js';
 
 const VERSION = (() => {
@@ -292,9 +291,10 @@ export function startServer() {
     return c.json(result);
   });
   app.delete('/tasks/:id', async (c) => {
-    const id = c.req.param('id');
-    const task = tasks.get(id);
+    const rawId = c.req.param('id');
+    const task = tasks.get(rawId);
     if (!task) return c.json({ error: 'Task not found' }, 404);
+    const id = task.id; // canonical TASK-ULID
 
     // Only todo tasks under draft plans can be hard-deleted
     if (task.status === 'todo') {
@@ -327,14 +327,17 @@ export function startServer() {
     return c.json(tasks.appendBody(c.req.param('id'), '\n' + text));
   });
 
+  // Helper: resolve CK-XXX ticket_number or TASK-ULID to canonical TASK-ULID
+  const resolveTaskId = (id) => tasks._resolveId(getDb(), id) || id;
+
   // ========== Task Comments ==========
   app.get('/tasks/:id/comments', (c) => {
-    return c.json(taskComments.list({ task_id: c.req.param('id') }));
+    return c.json(taskComments.list({ task_id: resolveTaskId(c.req.param('id')) }));
   });
   app.post('/tasks/:id/comments', async (c) => {
     const body = await c.req.json();
     return c.json(taskComments.create({
-      task_id: c.req.param('id'),
+      task_id: resolveTaskId(c.req.param('id')),
       author: body.author,
       body: body.body,
     }));
@@ -373,13 +376,13 @@ export function startServer() {
 
   // ========== Task Relations ==========
   app.get('/tasks/:id/relations', (c) => {
-    return c.json(taskRelations.list({ task_id: c.req.param('id') }));
+    return c.json(taskRelations.list({ task_id: resolveTaskId(c.req.param('id')) }));
   });
   app.post('/tasks/:id/relations', async (c) => {
     const body = await c.req.json();
     return c.json(taskRelations.create({
-      source_task_id: c.req.param('id'),
-      target_task_id: body.target_task_id,
+      source_task_id: resolveTaskId(c.req.param('id')),
+      target_task_id: resolveTaskId(body.target_task_id),
       relation_type: body.relation_type,
     }));
   });
@@ -687,6 +690,19 @@ export function startServer() {
     return c.body(content, 200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=31536000, immutable' });
   }
 
+  function dashboardNotBuiltHtml() {
+    return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Clawket</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0d1117;color:#e6edf3;padding:40px;max-width:640px;margin:0 auto;line-height:1.6}h1{color:#58a6ff;font-size:20px;margin-bottom:16px}code{background:#161b22;padding:2px 6px;border-radius:4px;font-size:13px}pre{background:#161b22;padding:12px;border-radius:6px;overflow-x:auto;font-size:13px}</style>
+</head><body>
+<h1>Clawket dashboard not built</h1>
+<p>The daemon is running but <code>web/dist/index.html</code> was not found.</p>
+<p>Build the React dashboard from the repo root:</p>
+<pre>cd web &amp;&amp; pnpm install &amp;&amp; pnpm build</pre>
+<p>API is available at <code>/projects</code>, <code>/plans</code>, <code>/units</code>, <code>/tasks</code>, <code>/cycles</code>.</p>
+</body></html>`;
+  }
+
   // Serve static assets (JS, CSS, SVG, etc.)
   app.get('/assets/*', (c) => {
     const assetPath = join(WEB_DIR, c.req.path);
@@ -714,12 +730,10 @@ export function startServer() {
       const html = readFileSync(indexPath, 'utf-8');
       return c.html(html);
     }
-    // Fallback to legacy dashboard
-    return c.html(webDashboardHtml(''));
+    return c.html(dashboardNotBuiltHtml(), 503);
   });
 
-  // Legacy route
-  app.get('/web', (c) => c.html(webDashboardHtml('')));
+  app.get('/web', (c) => c.redirect('/', 301));
 
   // ========== Dashboard (SessionStart context injection) ==========
   app.get('/dashboard', (c) => {

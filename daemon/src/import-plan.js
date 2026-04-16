@@ -5,61 +5,59 @@ import { projects, plans, units, tasks } from './repo.js';
 // Parse a Claude Code plan markdown file into Clawket entities.
 // Rules (deterministic, no LLM):
 //   - First `# <title>` line is the Plan title.
-//   - `## Phase N: <title>` (or `## Phase: <title>`) sections become Phase rows.
-//     If no explicit Phase heading found, the whole plan becomes a single "Phase 1".
-//   - Within a Phase, `### <title>` headings become Steps.
-//     Or, if the Phase contains a numbered list ("1. foo", "2. bar") at the top level,
-//     those become Steps instead.
+//   - `## Unit N: <title>` (or `## Unit: <title>`) sections become Unit rows.
+//     If no explicit Unit heading found, the whole plan becomes a single "Unit 1".
+//   - Within a Unit, `### <title>` headings become Tasks.
+//     Or, if the Unit contains a numbered list ("1. foo", "2. bar") at the top level,
+//     those become Tasks instead.
 //   - The text content between headings becomes the body of the enclosing entity.
 
 export function parsePlanMarkdown(md) {
   const lines = md.split('\n');
-  const plan = { title: null, description: '', phases: [] };
+  const plan = { title: null, description: '', units: [] };
 
   // Find plan title
   const titleMatch = lines.find(l => /^#\s+/.test(l));
   if (titleMatch) plan.title = titleMatch.replace(/^#\s+/, '').trim();
 
-  // Find phase sections by looking for ## Phase N: or ## Phase: headings
-  const phaseHeadingRe = /^##\s+Phase\s*(\d+)?\s*[:.]?\s*(.*)$/i;
-  const h2Re = /^##\s+(.+)$/;
-  const h3Re = /^###\s+(.+)$/;
+  // Find unit sections by looking for ## Unit N: or ## Unit: headings
+  const unitHeadingRe = /^##\s+Unit\s*(\d+)?\s*[:.]?\s*(.*)$/i;
 
-  // Locate phase headings
-  const phaseMarkers = [];
+  // Locate unit headings
+  const unitMarkers = [];
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(phaseHeadingRe);
+    const m = lines[i].match(unitHeadingRe);
     if (m) {
-      phaseMarkers.push({
+      unitMarkers.push({
         lineIdx: i,
-        idx: phaseMarkers.length,
-        title: (m[2] && m[2].trim()) || `Phase ${m[1] || phaseMarkers.length + 1}`,
+        idx: unitMarkers.length,
+        title: (m[2] && m[2].trim()) || `Unit ${m[1] || unitMarkers.length + 1}`,
       });
     }
   }
 
-  if (phaseMarkers.length === 0) {
-    // No explicit Phase section: synthesize a single Phase containing all content
-    plan.phases.push({
+  if (unitMarkers.length === 0) {
+    // No explicit Unit section: synthesize a single Unit containing all content
+    plan.units.push({
       idx: 0,
-      title: 'Phase 1',
+      title: 'Unit 1',
       goal: null,
       body: lines.join('\n').trim(),
-      steps: extractStepsFromBody(lines, 0, lines.length),
+      tasks: extractTasksFromBody(lines, 0, lines.length),
     });
   } else {
-    // Description = content from start to first phase
-    plan.description = lines.slice(0, phaseMarkers[0].lineIdx).join('\n').trim();
+    // Description = content from start to first unit
+    plan.description = lines.slice(0, unitMarkers[0].lineIdx).join('\n').trim();
 
-    for (let p = 0; p < phaseMarkers.length; p++) {
-      const start = phaseMarkers[p].lineIdx;
-      const end = p + 1 < phaseMarkers.length ? phaseMarkers[p + 1].lineIdx : lines.length;
-      plan.phases.push({
+    for (let p = 0; p < unitMarkers.length; p++) {
+      const start = unitMarkers[p].lineIdx;
+      const end = p + 1 < unitMarkers.length ? unitMarkers[p + 1].lineIdx : lines.length;
+      plan.units.push({
         idx: p,
-        title: phaseMarkers[p].title,
+        title: unitMarkers[p].title,
         goal: null,
         body: lines.slice(start, end).join('\n').trim(),
-        steps: extractStepsFromBody(lines, start + 1, end),
+        tasks: extractTasksFromBody(lines, start + 1, end),
       });
     }
   }
@@ -67,8 +65,8 @@ export function parsePlanMarkdown(md) {
   return plan;
 }
 
-function extractStepsFromBody(lines, start, end) {
-  // Prefer ### subheadings as steps
+function extractTasksFromBody(lines, start, end) {
+  // Prefer ### subheadings as tasks
   const h3Re = /^###\s+(.+)$/;
   const h3Indices = [];
   for (let i = start; i < end; i++) {
@@ -92,18 +90,18 @@ function extractStepsFromBody(lines, start, end) {
 
   // Fallback: look for numbered list items at paragraph starts
   const numberedRe = /^\s*\d+\.\s+\*?\*?([^*]+)\*?\*?(.*)$/;
-  const steps = [];
+  const out = [];
   for (let i = start; i < end; i++) {
     const m = lines[i].match(numberedRe);
     if (m) {
-      steps.push({
-        idx: steps.length,
+      out.push({
+        idx: out.length,
         title: (m[1] || '').trim(),
         body: ((m[2] || '') + '\n' + gatherContinuation(lines, i + 1, end)).trim(),
       });
     }
   }
-  return steps;
+  return out;
 }
 
 function gatherContinuation(lines, from, end) {
@@ -141,9 +139,9 @@ export function importPlanFile(filePath, { projectName = null, cwd = null, sourc
       dryRun: true,
       project: project,
       plan_title: parsed.title,
-      unit_count: parsed.phases.length,
-      task_count: parsed.phases.reduce((n, ph) => n + ph.steps.length, 0),
-      units: parsed.phases.map(p => ({ title: p.title, tasks: p.steps.map(s => s.title) })),
+      unit_count: parsed.units.length,
+      task_count: parsed.units.reduce((n, u) => n + u.tasks.length, 0),
+      units: parsed.units.map(u => ({ title: u.title, tasks: u.tasks.map(t => t.title) })),
     };
   }
 
@@ -158,21 +156,21 @@ export function importPlanFile(filePath, { projectName = null, cwd = null, sourc
 
   // Create units + tasks
   const createdUnits = [];
-  for (const ph of parsed.phases) {
+  for (const u of parsed.units) {
     const unitRow = units.create({
       plan_id: plan.id,
-      title: ph.title,
+      title: u.title,
       goal: null,
-      idx: ph.idx,
+      idx: u.idx,
       approval_required: false,
     });
     const createdTasks = [];
-    for (const st of ph.steps) {
+    for (const t of u.tasks) {
       const taskRow = tasks.create({
         unit_id: unitRow.id,
-        title: st.title,
-        body: st.body,
-        idx: st.idx,
+        title: t.title,
+        body: t.body,
+        idx: t.idx,
       });
       createdTasks.push(taskRow);
     }
