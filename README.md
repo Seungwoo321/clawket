@@ -101,7 +101,7 @@ Plain `codex` sessions then discover the Clawket plugin through the user's Codex
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 - Node.js 20+
-- Rust toolchain (only needed to build the CLI from source — a prebuilt binary ships in `bin/`)
+- Rust toolchain is **not** required — the plugin setup downloads a prebuilt `clawket` binary from `clawket/cli` GitHub Releases. Build from source only if you want to develop the CLI.
 
 ## Local RAG
 
@@ -178,29 +178,37 @@ Web Dashboard (React 19) ──────▶ clawketd HTTP API + SSE
 
 ## Project Structure
 
+Since **v2.3.0** this repo is a thin plugin shell — source code for cli/daemon/mcp/web
+lives in sibling repos under the `clawket` GitHub org. Setup pulls compiled artifacts.
+
 ```
 clawket/
-├── cli/                     # Rust CLI source + runtime launchers
-├── daemon/                  # Node.js daemon (Hono) — HTTP API, RAG, sqlite-vec
-│   └── src/                 # server.js, repo.js, db.js, embeddings.js
-├── mcp/                     # @clawket/mcp — separate stdio server (pre-built in dist/)
-├── web/                     # React 19 dashboard source (built output consumed by daemon)
-├── adapters/
-│   ├── shared/              # Shared runtime helper logic
-│   ├── claude/              # Claude adapter entrypoints (10 hook .cjs handlers)
-│   └── codex/               # Codex adapter (hook handlers + docs)
-├── hooks/hooks.json         # Claude hook routing manifest
-├── skills/clawket/          # /clawket skill (SKILL.md)
-├── plugins/clawket/         # Repo-local Codex plugin (hooks + manifest)
-├── .agents/plugins/         # Codex marketplace manifest (user-level registration target)
 ├── .claude-plugin/          # Claude plugin manifest + marketplace metadata
 ├── .mcp.json                # Registers `clawket mcp` as stdio server for Claude Code
-├── scripts/                 # Compatibility shims for Claude hooks
+├── hooks/hooks.json         # Claude hook routing manifest
+├── skills/clawket/          # /clawket skill (SKILL.md)
 ├── prompts/                 # Shared + runtime-specific prompt fragments
-├── bin/                     # Prebuilt CLI binary (Rust release)
+├── adapters/
+│   ├── shared/              # Shared runtime helper logic + setup downloader
+│   └── claude/              # Claude adapter entrypoints (hook .cjs handlers)
+├── scripts/                 # Compatibility shims for Claude hooks
+├── docs/                    # COMPATIBILITY.md + RELEASING.md + HOOK_ENFORCEMENT.md
 ├── assets/                  # Logo, mascot, branding
-└── screenshots/             # Dashboard screenshots
+├── screenshots/             # Dashboard screenshots
+└── bin/                     # (created by setup) downloaded clawket CLI binary
 ```
+
+### Separate repos
+
+| Repo | Content | Consumed as |
+|---|---|---|
+| [`clawket/cli`](https://github.com/clawket/cli) | Rust CLI source | GitHub Releases binary |
+| [`clawket/daemon`](https://github.com/clawket/daemon) | Node daemon (+Rust scaffold) | `@clawket/daemon` npm |
+| [`clawket/mcp`](https://github.com/clawket/mcp) | MCP stdio server | `@clawket/mcp` npm |
+| [`clawket/web`](https://github.com/clawket/web) | React dashboard | npm (built bundle) |
+| [`clawket/landing`](https://github.com/clawket/landing) | Public landing page | Cloudflare Pages |
+
+See `docs/COMPATIBILITY.md` for version range guarantees.
 
 ## Web Dashboard
 
