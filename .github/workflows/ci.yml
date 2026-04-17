@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate plugin.json
+        run: node -e "JSON.parse(require('fs').readFileSync('.claude-plugin/plugin.json','utf8'))"
+
+      - name: Validate package.json
+        run: node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
+
+      - name: Syntax check hook scripts
+        run: |
+          for f in scripts/*.cjs adapters/shared/*.cjs adapters/claude/*.cjs; do
+            echo "→ $f"
+            node --check "$f"
+          done
+
+      - name: Version consistency
+        run: |
+          PLUGIN_VERSION=$(node -p "require('./.claude-plugin/plugin.json').version")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "plugin.json=$PLUGIN_VERSION package.json=$PACKAGE_VERSION"
+          test "$PLUGIN_VERSION" = "$PACKAGE_VERSION"
+
+      - name: Compat matrix doc exists
+        run: test -f docs/COMPATIBILITY.md
+
+  setup-smoke:
+    # Requires clawket/cli Release + @clawket/{daemon,mcp} on npm.
+    # Run manually via workflow_dispatch until all artifacts are published.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run plugin setup
+        env:
+          CLAWKET_CLI_VERSION: v2.2.1
+          CLAWKET_CLI_REPO: clawket/cli
+        run: |
+          node scripts/setup.cjs
+          test -x bin/clawket || (echo "bin/clawket not installed"; exit 1)
