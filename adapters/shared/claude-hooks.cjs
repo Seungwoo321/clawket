@@ -60,7 +60,12 @@ function detectCliTarget() {
   if (platform === 'darwin' && arch === 'arm64') return 'aarch64-apple-darwin';
   if (platform === 'linux' && arch === 'x64') return 'x86_64-unknown-linux-gnu';
   if (platform === 'linux' && arch === 'arm64') return 'aarch64-unknown-linux-gnu';
-  if (platform === 'win32') return 'x86_64-pc-windows-msvc';
+  if (platform === 'win32') {
+    throw new Error(
+      'Windows is not yet supported by the Clawket CLI. ' +
+        'Use WSL2 or macOS/Linux. Track: https://github.com/clawket/cli/issues'
+    );
+  }
   throw new Error(`Unsupported platform: ${platform}/${arch}`);
 }
 
