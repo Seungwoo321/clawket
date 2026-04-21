@@ -9,6 +9,7 @@ const {
   clawketBin,
   ensureXdgDirs,
   exec,
+  execDiag,
   readHookInput,
   readJson,
   readPromptFiles,
@@ -17,8 +18,19 @@ const {
 } = require('./common.cjs');
 const { buildSummary, parseInProgressTasks } = require('./session-context.cjs');
 
-const CLI_VERSION = process.env.CLAWKET_CLI_VERSION || 'v2.2.1';
 const CLI_REPO = process.env.CLAWKET_CLI_REPO || 'clawket/cli';
+const DAEMON_REPO = process.env.CLAWKET_DAEMON_REPO || 'clawket/daemon';
+
+// Component versions are pinned per plugin release in `<pluginRoot>/components.json`.
+// Env vars (CLAWKET_CLI_VERSION, CLAWKET_DAEMON_VERSION) override for local dev only.
+function loadComponentsManifest(pluginRoot) {
+  const manifestPath = path.resolve(pluginRoot, 'components.json');
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+  } catch (error) {
+    throw new Error(`components manifest missing or invalid at ${manifestPath}: ${error.message}`);
+  }
+}
 
 function runtime(pluginRoot) {
   return {
@@ -92,7 +104,10 @@ function downloadToFile(url, dest) {
   });
 }
 
-async function ensureCliBinary(pluginRoot) {
+async function ensureCliBinary(pluginRoot, version) {
+  const cliVersion = process.env.CLAWKET_CLI_VERSION || version;
+  if (!cliVersion) throw new Error('CLI version missing (components.json.cli)');
+
   const binDir = path.resolve(pluginRoot, 'bin');
   const binName = os.platform() === 'win32' ? 'clawket.exe' : 'clawket';
   const binPath = path.resolve(binDir, binName);
@@ -101,26 +116,61 @@ async function ensureCliBinary(pluginRoot) {
   fs.mkdirSync(binDir, { recursive: true });
   const target = detectCliTarget();
   const ext = os.platform() === 'win32' ? 'zip' : 'tar.gz';
-  const assetName = `clawket-${CLI_VERSION}-${target}.${ext}`;
-  const url = `https://github.com/${CLI_REPO}/releases/download/${CLI_VERSION}/${assetName}`;
+  const assetName = `clawket-${cliVersion}-${target}.${ext}`;
+  const url = `https://github.com/${CLI_REPO}/releases/download/${cliVersion}/${assetName}`;
   const archive = path.resolve(binDir, assetName);
 
-  process.stderr.write(`[clawket-setup] Downloading CLI ${CLI_VERSION} for ${target}...\n`);
+  process.stderr.write(`[clawket-setup] Downloading CLI ${cliVersion} for ${target}...\n`);
   await downloadToFile(url, archive);
   if (ext === 'tar.gz') {
     exec(`tar -xzf "${archive}" -C "${binDir}"`);
-    const extracted = path.resolve(binDir, `clawket-${CLI_VERSION}-${target}`, 'clawket');
+    const extracted = path.resolve(binDir, `clawket-${cliVersion}-${target}`, 'clawket');
     if (fs.existsSync(extracted)) {
       fs.copyFileSync(extracted, binPath);
       fs.chmodSync(binPath, 0o755);
     }
   } else {
     exec(`cd "${binDir}" && unzip -o "${assetName}"`);
-    const extracted = path.resolve(binDir, `clawket-${CLI_VERSION}-${target}`, 'clawket.exe');
+    const extracted = path.resolve(binDir, `clawket-${cliVersion}-${target}`, 'clawket.exe');
     if (fs.existsSync(extracted)) fs.copyFileSync(extracted, binPath);
   }
   fs.unlinkSync(archive);
   process.stderr.write(`[clawket-setup] CLI installed at ${binPath}\n`);
+  return binPath;
+}
+
+async function ensureDaemonBinary(pluginRoot, version) {
+  const daemonVersion = process.env.CLAWKET_DAEMON_VERSION || version;
+  if (!daemonVersion) throw new Error('daemon version missing (components.json.daemon)');
+
+  const binDir = path.resolve(pluginRoot, 'daemon', 'bin');
+  const binName = os.platform() === 'win32' ? 'clawketd.exe' : 'clawketd';
+  const binPath = path.resolve(binDir, binName);
+  if (fs.existsSync(binPath)) return binPath;
+
+  fs.mkdirSync(binDir, { recursive: true });
+  const target = detectCliTarget();
+  const ext = os.platform() === 'win32' ? 'zip' : 'tar.gz';
+  const assetName = `clawketd-${daemonVersion}-${target}.${ext}`;
+  const url = `https://github.com/${DAEMON_REPO}/releases/download/${daemonVersion}/${assetName}`;
+  const archive = path.resolve(binDir, assetName);
+
+  process.stderr.write(`[clawket-setup] Downloading daemon ${daemonVersion} for ${target}...\n`);
+  await downloadToFile(url, archive);
+  if (ext === 'tar.gz') {
+    exec(`tar -xzf "${archive}" -C "${binDir}"`);
+    const extracted = path.resolve(binDir, `clawketd-${daemonVersion}-${target}`, 'clawketd');
+    if (fs.existsSync(extracted)) {
+      fs.copyFileSync(extracted, binPath);
+      fs.chmodSync(binPath, 0o755);
+    }
+  } else {
+    exec(`cd "${binDir}" && unzip -o "${assetName}"`);
+    const extracted = path.resolve(binDir, `clawketd-${daemonVersion}-${target}`, 'clawketd.exe');
+    if (fs.existsSync(extracted)) fs.copyFileSync(extracted, binPath);
+  }
+  fs.unlinkSync(archive);
+  process.stderr.write(`[clawket-setup] daemon installed at ${binPath}\n`);
   return binPath;
 }
 
@@ -140,16 +190,43 @@ function installNpmDeps(pluginRoot) {
   }
 }
 
+// ensureDaemon — best-effort daemon liveness check with visible diagnostics.
+//
+// Contract (CLAWKET_DAEMON_BIN injection):
+//   1. If a plugin-managed daemon binary exists at <pluginRoot>/daemon/bin/clawketd,
+//      inject CLAWKET_DAEMON_BIN so the CLI uses that specific binary even when
+//      another clawketd is on PATH (e.g. a stale dev build).
+//   2. The env is passed to BOTH `clawket daemon status` and `clawket daemon start`.
+//   3. On start failure, stderr/stdout from clawketd is forwarded to the user
+//      (was silently swallowed pre-CK-380/CK-382). Users can then run
+//      `clawket doctor` for a full health snapshot.
 function ensureDaemon(clawket, pluginRoot) {
-  installNpmDeps(pluginRoot);
-  const status = exec(`${clawket} daemon status`);
-  if (!status.includes('running')) {
-    exec(`${clawket} daemon start`);
-    for (let i = 0; i < 5; i += 1) {
-      if (exec(`${clawket} daemon status`).includes('running')) return;
-      exec('sleep 0.5');
-    }
+  const daemonBin = path.resolve(pluginRoot, 'daemon', 'bin', 'clawketd');
+  const hasPluginBin = fs.existsSync(daemonBin);
+  const env = hasPluginBin
+    ? { ...process.env, CLAWKET_DAEMON_BIN: daemonBin }
+    : process.env;
+
+  if (exec(`${clawket} daemon status`, { env }).includes('running')) return;
+
+  const startRes = execDiag(`${clawket} daemon start`, { env });
+  if (!startRes.ok) {
+    process.stderr.write(
+      `[clawket] daemon start failed (exit ${startRes.code}). stderr: ${startRes.stderr || '(empty)'}\n` +
+      `[clawket] run 'clawket doctor' for diagnostics` +
+      (hasPluginBin ? ` (using plugin daemon at ${daemonBin})` : ' (no plugin daemon binary found)') +
+      `\n`
+    );
+    return;
   }
+
+  for (let i = 0; i < 10; i += 1) {
+    if (exec(`${clawket} daemon status`, { env }).includes('running')) return;
+    exec('sleep 0.3');
+  }
+  process.stderr.write(
+    `[clawket] daemon did not become ready within 3s. Run 'clawket doctor'.\n`
+  );
 }
 
 function getWebUrl() {
@@ -496,11 +573,18 @@ async function runSetup() {
   const pluginRoot = resolvePluginRoot(path.dirname(__filename));
   ensureXdgDirs();
   installNpmDeps(pluginRoot);
+  const manifest = loadComponentsManifest(pluginRoot);
   try {
-    await ensureCliBinary(pluginRoot);
+    await ensureCliBinary(pluginRoot, manifest.cli);
   } catch (error) {
     process.stderr.write(`[clawket-setup] WARNING: CLI binary download failed: ${error.message}\n`);
     process.stderr.write(`[clawket-setup] Hint: place a clawket binary at ${path.resolve(pluginRoot, 'bin', 'clawket')} manually, or rerun setup with CLAWKET_CLI_VERSION override.\n`);
+  }
+  try {
+    await ensureDaemonBinary(pluginRoot, manifest.daemon);
+  } catch (error) {
+    process.stderr.write(`[clawket-setup] WARNING: daemon binary download failed: ${error.message}\n`);
+    process.stderr.write(`[clawket-setup] Hint: place a clawketd binary at ${path.resolve(pluginRoot, 'daemon', 'bin', 'clawketd')} manually, or rerun setup with CLAWKET_DAEMON_VERSION override.\n`);
   }
 }
 

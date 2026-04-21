@@ -26,6 +26,26 @@ function exec(cmd, opts = {}) {
   }
 }
 
+// execDiag: same as exec but returns { ok, stdout, stderr, code } for hook diagnostics.
+// Used by ensureDaemon / doctor to surface failure reasons instead of silently returning ''.
+function execDiag(cmd, opts = {}) {
+  try {
+    const stdout = execSync(cmd, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      ...opts,
+    });
+    return { ok: true, stdout: String(stdout).trim(), stderr: '', code: 0 };
+  } catch (err) {
+    return {
+      ok: false,
+      stdout: err.stdout ? String(err.stdout).trim() : '',
+      stderr: err.stderr ? String(err.stderr).trim() : String(err.message || ''),
+      code: typeof err.status === 'number' ? err.status : -1,
+    };
+  }
+}
+
 function readHookInput() {
   try {
     const chunks = [];
@@ -87,6 +107,7 @@ module.exports = {
   clawketBin,
   ensureXdgDirs,
   exec,
+  execDiag,
   readHookInput,
   readJson,
   readPromptFiles,
