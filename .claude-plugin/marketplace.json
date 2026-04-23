@@ -1,16 +1,16 @@
 {
-  "name": "Seungwoo321-clawket",
+  "name": "clawket",
   "owner": {
     "name": "Seungwoo Lee"
   },
   "metadata": {
     "description": "LLM-native work management plugin for Claude Code",
-    "homepage": "https://github.com/Seungwoo321/clawket"
+    "homepage": "https://github.com/clawket/clawket"
   },
   "plugins": [
     {
       "name": "clawket",
-      "version": "2.3.4",
+      "version": "2.3.5",
       "source": "./",
       "description": "LLM-native work management dashboard for Claude Code — structured task board + MCP RAG pull tools across sessions"
     }

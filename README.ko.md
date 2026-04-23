@@ -69,10 +69,10 @@ Clawket은 영구 DB, 로컬 벡터 RAG, MCP pull 인터페이스, 런타임 어
 
 ```bash
 # 1. 마켓플레이스 추가
-/plugin marketplace add Seungwoo321/clawket
+/plugin marketplace add clawket/clawket
 
 # 2. 플러그인 설치
-/plugin install clawket@Seungwoo321-clawket
+/plugin install clawket@clawket
 ```
 
 setup 훅이 사전 빌드된 `clawket` CLI 와 `clawketd` 데몬 바이너리를 GitHub Releases 에서 자동 다운로드합니다. 임베딩 모델은 데몬이 최초 사용 시 가져옵니다. MCP stdio 서버(`clawket mcp`)는 플러그인의 `.mcp.json`을 통해 자동 등록됩니다.

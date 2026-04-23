@@ -45,7 +45,7 @@ rm -rf ~/.local/state/clawket
 
 ## Contact
 
-For privacy-related questions, open an issue at [github.com/Seungwoo321/clawket](https://github.com/Seungwoo321/clawket/issues).
+For privacy-related questions, open an issue at [github.com/clawket/clawket](https://github.com/clawket/clawket/issues).
 
 ---
 

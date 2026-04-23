@@ -69,10 +69,10 @@ When a task transitions to `done`/`cancelled`, the daemon auto-cascades completi
 
 ```bash
 # 1. Add marketplace
-/plugin marketplace add Seungwoo321/clawket
+/plugin marketplace add clawket/clawket
 
 # 2. Install plugin
-/plugin install clawket@Seungwoo321-clawket
+/plugin install clawket@clawket
 ```
 
 The setup hook downloads the prebuilt `clawket` CLI and `clawketd` daemon binaries from GitHub Releases. The embedding model is fetched on first use by the daemon. The MCP stdio server is registered automatically through the plugin's `.mcp.json` as `clawket mcp`.
