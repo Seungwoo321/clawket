@@ -4,7 +4,8 @@
   "version": "2.3.12",
   "description": "Claude Code plugin shell for Clawket — hooks + prompts + skills; delegates runtime to @clawket/{cli,daemon,web}",
   "scripts": {
-    "setup": "node scripts/setup.cjs"
+    "setup": "node scripts/setup.cjs",
+    "dev:fresh-install": "node scripts/dev-fresh-install.cjs"
   },
   "compat": {
     "@clawket/cli": ">=2.2.0 <3.0.0",
