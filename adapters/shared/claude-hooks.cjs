@@ -802,6 +802,7 @@ async function runSetup() {
 }
 
 module.exports = {
+  ensureInstalled,
   runPlanSync,
   runPostToolUse,
   runPreToolUse,
