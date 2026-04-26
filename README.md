@@ -75,7 +75,7 @@ When a task transitions to `done`/`cancelled`, the daemon auto-cascades completi
 /plugin install clawket@clawket
 ```
 
-The setup hook downloads the prebuilt `clawket` CLI and `clawketd` daemon binaries from GitHub Releases. The embedding model is fetched on first use by the daemon. The MCP stdio server is registered automatically through the plugin's `.mcp.json` as `clawket mcp`.
+Binaries (`clawket` CLI, `clawketd` daemon, web bundle) are downloaded from GitHub Releases by an idempotent install gate (`adapters/shared/claude-hooks.cjs::ensureInstalled`) that runs at both `SessionStart` and on the first MCP spawn — whichever fires first wins; subsequent runs are no-ops once version markers match. The embedding model is fetched on first use by the daemon. The MCP stdio server is registered through the plugin's `.mcp.json` as `clawket mcp` and launched via the bundled `scripts/mcp-launch.cjs`, which delegates to the same install gate before exec'ing the CLI.
 
 ### Prerequisites
 
@@ -168,18 +168,23 @@ install time since **v2.3.2**.
 ```
 clawket/
 ├── .claude-plugin/          # Claude plugin manifest + marketplace metadata
-├── .mcp.json                # Registers `clawket mcp` as stdio server for Claude Code
+├── .mcp.json                # Registers `clawket mcp` (stdio) — points to scripts/mcp-launch.cjs
 ├── hooks/hooks.json         # Claude hook routing manifest
+├── components.json          # Pinned versions of cli / daemon / web binaries consumed by setup
 ├── skills/clawket/          # /clawket skill (SKILL.md)
 ├── prompts/                 # Shared + runtime-specific prompt fragments
 ├── adapters/
-│   ├── shared/              # Shared runtime helper logic + setup downloader
+│   ├── shared/              # claude-hooks.cjs — install gate (`ensureInstalled`) + daemon glue
 │   └── claude/              # Claude adapter entrypoints (hook .cjs handlers)
-├── scripts/                 # Compatibility shims for Claude hooks
+├── scripts/
+│   ├── setup.cjs            # Manual / CI setup entry — delegates to ensureInstalled
+│   └── mcp-launch.cjs       # MCP first-spawn launcher — runs ensureInstalled, then exec's `clawket mcp`
 ├── docs/                    # COMPATIBILITY.md + RELEASING.md + HOOK_ENFORCEMENT.md
 ├── assets/                  # Logo, mascot, branding
 ├── screenshots/             # Dashboard screenshots
-└── bin/                     # (created by setup) downloaded clawket CLI binary
+├── bin/                     # (created by setup) downloaded clawket CLI binary
+├── daemon/bin/              # (created by setup) downloaded clawketd binary
+└── web/dist/                # (created by setup) extracted web dashboard bundle
 ```
 
 ### Separate repos
@@ -190,6 +195,7 @@ clawket/
 | [`clawket/daemon`](https://github.com/clawket/daemon) | Rust daemon (axum + rusqlite + sqlite-vec + candle-core) | GitHub Releases binary |
 | [`clawket/web`](https://github.com/clawket/web) | React dashboard | GitHub Releases tarball |
 | [`clawket/landing`](https://github.com/clawket/landing) | Public landing page | Cloudflare Pages |
+| [`clawket/tap`](https://github.com/clawket/tap) | Homebrew formulas | Homebrew distribution channel |
 | [`clawket/mcp`](https://github.com/clawket/mcp) | Legacy Node MCP server | **deprecated** — scheduled for archive in plugin v11 U4 |
 
 See `docs/COMPATIBILITY.md` for version range guarantees.
