@@ -130,14 +130,19 @@ jobs:
           " "$NEXT"
 
           # Append COMPATIBILITY.md row (best-effort idempotent).
-          if ! grep -q "\`$NEXT\`" docs/COMPATIBILITY.md; then
-            LAST_ROW=$(grep '^| `[0-9]' docs/COMPATIBILITY.md | tail -1)
-            NEW_ROW=$(echo "$LAST_ROW" | sed "s/| \`[0-9.]*\`/| \`$NEXT\`/")
-            sed -i.bak "/^| \`$(node -p "require('./package.json').version")\`/a\\
-$NEW_ROW
-" docs/COMPATIBILITY.md || true
-            rm -f docs/COMPATIBILITY.md.bak
-          fi
+          node -e '
+            const fs = require("fs");
+            const next = process.argv[1];
+            const file = "docs/COMPATIBILITY.md";
+            let lines = fs.readFileSync(file, "utf-8").split("\n");
+            if (lines.some(l => l.startsWith("| `" + next + "`"))) process.exit(0);
+            let lastIdx = -1;
+            for (let i = 0; i < lines.length; i++) if (/^\| `\d/.test(lines[i])) lastIdx = i;
+            if (lastIdx < 0) process.exit(0);
+            const newRow = lines[lastIdx].replace(/^\| `[\d.]+`/, "| `" + next + "`");
+            lines.splice(lastIdx + 1, 0, newRow);
+            fs.writeFileSync(file, lines.join("\n"));
+          ' "$NEXT"
 
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
