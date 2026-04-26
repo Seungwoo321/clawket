@@ -31,6 +31,7 @@ the tested combination here.
 | `2.3.9` | `>=2.2.0 <3.0.0` | `>=2.2.0 <3.0.0` | `>=2.2.0 <3.0.0` | n/a |
 | `2.3.10` | `>=2.2.0 <3.0.0` | `>=2.2.0 <3.0.0` | `>=2.2.0 <3.0.0` | n/a |
 | `2.3.11` | `>=2.2.0 <3.0.0` | `>=2.2.0 <3.0.0` | `>=2.2.0 <3.0.0` | n/a |
+| `2.3.12` | `>=2.2.0 <3.0.0` | `>=2.2.0 <3.0.0` | `>=2.2.0 <3.0.0` | n/a |
 
 Ranges are SemVer — a major bump in any component triggers a plugin major bump. Exact binary
 versions consumed by setup live in `components.json` (e.g. `daemon: v0.2.0`, `cli: v0.2.0`).
